@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+
+  /* Extended color palette for dark mode */
+  --color-slate-850: #172033;
+  --color-slate-750: #293548;
+}
+
+/* Custom scrollbar for dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: theme('colors.slate.800');
+}
+
+::-webkit-scrollbar-thumb {
+  background: theme('colors.slate.600');
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.slate.500');
+}
+
+/* Smooth transitions */
+* {
+  @apply transition-colors duration-150;
+}
+
+/* Focus ring styles */
+/* Focus ring styles */
+*:focus-visible {
+  @apply outline-none ring-2 ring-emerald-500 ring-offset-2 ring-offset-slate-900;
+}
+
+/* Enforce cursors */
+button,
+a,
+[role="button"] {
+  @apply cursor-pointer;
+}
+
+/* Glass card effect */
+.glass {
+  @apply bg-slate-800/50 backdrop-blur-xl border border-slate-700/50;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent;
+}
+
+/* Animated gradient border */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, theme('colors.emerald.500'), theme('colors.teal.500'));
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0.5;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full text-sm;
+}
+
+.data-table th {
+  @apply text-left px-4 py-3 text-slate-400 font-medium border-b border-slate-700;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-b border-slate-800;
+}
+
+.data-table tr:hover td {
+  @apply bg-slate-800/50;
+}
+
+/* Amount styling */
+.amount-positive {
+  @apply text-emerald-400;
+}
+
+.amount-negative {
+  @apply text-rose-400;
+}
+
+/* Status badges */
+.badge {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+  @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+}
+
+.badge-warning {
+  @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+}
+
+.badge-error {
+  @apply bg-rose-500/20 text-rose-400 border border-rose-500/30;
+}
+
+.badge-neutral {
+  @apply bg-slate-500/20 text-slate-400 border border-slate-500/30;
+}
