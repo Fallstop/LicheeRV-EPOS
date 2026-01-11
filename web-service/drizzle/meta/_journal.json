@@ -15,6 +15,13 @@
       "when": 1768086217639,
       "tag": "0001_dear_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1768105113206,
+      "tag": "0002_worthless_bishop",
+      "breakpoints": true
     }
   ]
 }

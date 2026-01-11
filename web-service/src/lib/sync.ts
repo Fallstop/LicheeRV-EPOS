@@ -2,6 +2,7 @@ import { akahu, getUserToken, getAccountId } from "./akahu";
 import { db } from "./db";
 import { transactions, systemState } from "./db/schema";
 import { eq, sql } from "drizzle-orm";
+import { matchTransaction } from "./matching";
 import type { Transaction as AkahuTransaction, EnrichedTransaction } from "akahu";
 
 const SYNC_STATE_KEY = "last_sync_cursor";
@@ -19,14 +20,28 @@ function isEnrichedTransaction(tx: AkahuTransaction): tx is EnrichedTransaction 
     return "merchant" in tx && tx.merchant !== undefined;
 }
 
+interface AkahuMeta {
+    card_suffix?: string;
+    logo?: string;
+    particulars?: string;
+    code?: string;
+    reference?: string;
+    other_account?: string;
+}
+
 function mapAkahuTransaction(tx: AkahuTransaction) {
+    const meta = (tx as { meta?: AkahuMeta }).meta;
+    
     return {
         akahuId: tx._id,
         date: new Date(tx.date),
         amount: tx.amount,
         description: tx.description,
         merchant: isEnrichedTransaction(tx) ? tx.merchant?.name ?? null : null,
+        merchantLogo: meta?.logo ?? null,
         category: isEnrichedTransaction(tx) ? tx.category?.name ?? null : null,
+        cardSuffix: meta?.card_suffix ?? null,
+        otherAccount: meta?.other_account ?? null,
         rawData: JSON.stringify(tx),
     };
 }
@@ -97,7 +112,7 @@ export async function syncTransactions(): Promise<SyncResult> {
                     .limit(1);
 
                 if (existing.length > 0) {
-                    // Update existing transaction
+                    // Update existing transaction (preserve matching info)
                     await db
                         .update(transactions)
                         .set({
@@ -107,8 +122,29 @@ export async function syncTransactions(): Promise<SyncResult> {
                     result.updated++;
                 } else {
                     // Insert new transaction
-                    await db.insert(transactions).values(mapped);
+                    const [inserted] = await db.insert(transactions).values(mapped).returning();
                     result.inserted++;
+
+                    // Try to match the new transaction to a flatmate
+                    const match = await matchTransaction(
+                        inserted.id,
+                        mapped.amount,
+                        mapped.description,
+                        mapped.rawData,
+                        mapped.date,
+                        mapped.cardSuffix
+                    );
+
+                    if (match) {
+                        await db
+                            .update(transactions)
+                            .set({
+                                matchedUserId: match.userId,
+                                matchType: match.matchType,
+                                matchConfidence: match.confidence,
+                            })
+                            .where(eq(transactions.id, inserted.id));
+                    }
                 }
             } catch (error) {
                 result.errors.push(`Failed to process transaction ${tx._id}: ${error}`);

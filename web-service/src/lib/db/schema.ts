@@ -10,7 +10,9 @@ export const users = sqliteTable("user", {
     emailVerified: integer("emailVerified", { mode: "timestamp_ms" }),
     image: text("image"),
     role: text("role", { enum: ["admin", "user"] }).notNull().default("user"),
-    bankAccountPattern: text("bank_account_pattern"), // Substring or regex to match transactions
+    bankAccountPattern: text("bank_account_pattern"), // Bank account number to match transactions
+    cardSuffix: text("card_suffix"), // Last 4 digits of expense card (e.g., "8423")
+    matchingName: text("matching_name"), // Alternative name pattern (e.g., "READER T A" for "Taine Reader")
     createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
     updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
@@ -67,7 +69,10 @@ export const transactions = sqliteTable("transactions", {
     amount: real("amount").notNull(), // Positive = money in, Negative = money out
     description: text("description").notNull(),
     merchant: text("merchant"), // If available
+    merchantLogo: text("merchant_logo"), // Akahu CDN URL for merchant logo
     category: text("category"), // Akahu category
+    cardSuffix: text("card_suffix"), // Last 4 digits of card used (if EFTPOS/card transaction)
+    otherAccount: text("other_account"), // Bank account for transfers (e.g., "02-0108-0335777-00")
     rawData: text("raw_data").notNull(), // Full JSON from Akahu
     // Matching fields
     matchedUserId: text("matched_user_id").references(() => users.id),

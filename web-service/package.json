@@ -17,6 +17,7 @@
     "akahu": "^2.3.0",
     "better-sqlite3": "^12.6.0",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",

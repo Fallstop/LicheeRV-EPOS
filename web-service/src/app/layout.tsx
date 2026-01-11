@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Flat Manager | Shared Finances",
+  title: "FlatOS | Shared Finances",
   description: "Track and manage shared flat expenses, rent payments, and utilities",
 };
 

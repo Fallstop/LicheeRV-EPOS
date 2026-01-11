@@ -10,7 +10,7 @@ export default function GlobalError({
     return (
         <html lang="en">
             <head>
-                <title>Error | Flat Manager</title>
+                <title>Error | FlatOS</title>
             </head>
             <body className="bg-slate-900 text-white min-h-screen flex items-center justify-center">
                 <div className="text-center p-8">

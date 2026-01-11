@@ -23,7 +23,7 @@ export default async function SignInPage() {
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 mb-4">
                             <Wallet className="w-8 h-8 text-white" />
                         </div>
-                        <h1 className="text-2xl font-bold text-white mb-2">Flat Manager</h1>
+                        <h1 className="text-2xl font-bold text-white mb-2">FlatOS</h1>
                         <p className="text-slate-400 text-sm">Sign in to manage shared finances</p>
                     </div>
 

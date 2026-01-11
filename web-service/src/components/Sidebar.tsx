@@ -83,7 +83,7 @@ export function Sidebar({ user }: SidebarProps) {
                                 <Home className="w-5 h-5 text-white" />
                             </div>
                             <div>
-                                <h1 className="font-bold text-lg gradient-text">Flat Manager</h1>
+                                <h1 className="font-bold text-lg gradient-text">FlatOS</h1>
                                 <p className="text-xs text-slate-500">Shared Finances</p>
                             </div>
                         </div>
