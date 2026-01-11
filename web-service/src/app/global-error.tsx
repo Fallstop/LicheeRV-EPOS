@@ -8,7 +8,10 @@ export default function GlobalError({
     reset: () => void;
 }) {
     return (
-        <html>
+        <html lang="en">
+            <head>
+                <title>Error | Flat Manager</title>
+            </head>
             <body className="bg-slate-900 text-white min-h-screen flex items-center justify-center">
                 <div className="text-center p-8">
                     <h2 className="text-2xl font-bold mb-4">Something went wrong!</h2>

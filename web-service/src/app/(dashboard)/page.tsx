@@ -1,5 +1,12 @@
 import { auth } from "@/lib/auth";
-import { DollarSign, TrendingUp, TrendingDown, Users, RefreshCw } from "lucide-react";
+import { db } from "@/lib/db";
+import { transactions, users } from "@/lib/db/schema";
+import { desc, sql, ne } from "drizzle-orm";
+import { DollarSign, TrendingUp, TrendingDown, Users, RefreshCw, ArrowRight } from "lucide-react";
+import { SyncButton } from "@/components/SyncButton";
+import { getLastSyncTime, canTriggerManualRefresh } from "@/lib/sync";
+import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 // Stat card component
 function StatCard({
@@ -47,46 +54,76 @@ export default async function DashboardPage() {
     const session = await auth();
     const isAdmin = session?.user?.role === "admin";
 
+    // Get sync status
+    const lastSyncTime = await getLastSyncTime();
+    const { canRefresh, nextRefreshAt } = await canTriggerManualRefresh();
+
+    // Fetch recent transactions
+    const recentTxs = await db.select().from(transactions).orderBy(desc(transactions.date)).limit(5);
+
+    // Get stats
+    const stats = await db
+        .select({
+            totalIn: sql<number>`sum(case when amount > 0 then amount else 0 end)`,
+            totalOut: sql<number>`sum(case when amount < 0 then amount else 0 end)`,
+            count: sql<number>`count(*)`,
+        })
+        .from(transactions);
+
+    const totalIn = stats[0]?.totalIn ?? 0;
+    const totalOut = Math.abs(stats[0]?.totalOut ?? 0);
+    const transactionCount = stats[0]?.count ?? 0;
+
+    // Get flatmate count
+    const flatmateCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(ne(users.role, "admin"));
+
     return (
         <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-2xl font-bold">Welcome back, {session?.user?.name?.split(" ")[0]}</h1>
-                    <p className="text-slate-400 mt-1">Here&apos;s what&apos;s happening with your flat finances</p>
+                    <p className="text-slate-400 mt-1">
+                        {lastSyncTime
+                            ? `Last synced ${formatDistanceToNow(lastSyncTime, { addSuffix: true })}`
+                            : "Not synced yet - sync transactions to get started"}
+                    </p>
                 </div>
-                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium hover:opacity-90 transition-opacity">
-                    <RefreshCw className="w-4 h-4" />
-                    Sync Transactions
-                </button>
+                <SyncButton
+                    isAdmin={isAdmin}
+                    lastSyncTime={lastSyncTime}
+                    canRefresh={canRefresh}
+                    nextRefreshAt={nextRefreshAt}
+                />
             </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <StatCard
-                    title="Account Balance"
-                    value="$2,847.50"
-                    subtitle="Updated 2 hours ago"
+                    title="Total Money In"
+                    value={`$${totalIn.toFixed(2)}`}
+                    subtitle={`${transactionCount} transactions`}
                     icon={<DollarSign className="w-5 h-5 text-teal-400" />}
-                    trend="up"
-                    trendValue="+12.5%"
                 />
                 <StatCard
-                    title="Total Due This Week"
-                    value="$1,266.00"
-                    subtitle="Due Thursday"
+                    title="Total Money Out"
+                    value={`$${totalOut.toFixed(2)}`}
+                    subtitle="All time"
+                    icon={<TrendingDown className="w-5 h-5 text-rose-400" />}
+                />
+                <StatCard
+                    title="Net Balance"
+                    value={`$${(totalIn - totalOut).toFixed(2)}`}
+                    subtitle="In - Out"
                     icon={<TrendingUp className="w-5 h-5 text-emerald-400" />}
                 />
                 <StatCard
-                    title="Paid This Week"
-                    value="$744.00"
-                    subtitle="3 of 4 flatmates"
-                    icon={<TrendingDown className="w-5 h-5 text-emerald-400" />}
-                />
-                <StatCard
                     title="Active Flatmates"
-                    value="4"
-                    subtitle="All active"
+                    value={String(flatmateCount[0]?.count ?? 0)}
+                    subtitle="Configured"
                     icon={<Users className="w-5 h-5 text-amber-400" />}
                 />
             </div>
@@ -105,23 +142,54 @@ export default async function DashboardPage() {
                                 <tr>
                                     <th>Date</th>
                                     <th>Description</th>
-                                    <th>Person</th>
                                     <th className="text-right">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td colSpan={4} className="text-center py-12 text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <RefreshCw className="w-8 h-8 text-slate-600" />
-                                            <p>No transactions synced yet</p>
-                                            <p className="text-xs">Connect to Akahu to sync transactions</p>
-                                        </div>
-                                    </td>
-                                </tr>
+                                {recentTxs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={3} className="text-center py-12 text-slate-500">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <RefreshCw className="w-8 h-8 text-slate-600" />
+                                                <p>No transactions synced yet</p>
+                                                <p className="text-xs">Click Sync to fetch transactions from Akahu</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    recentTxs.map((tx) => (
+                                        <tr key={tx.id}>
+                                            <td className="text-slate-400">
+                                                {new Date(tx.date).toLocaleDateString()}
+                                            </td>
+                                            <td>
+                                                <div className="font-medium text-slate-200 truncate max-w-[200px]">
+                                                    {tx.description}
+                                                </div>
+                                                {tx.merchant && (
+                                                    <div className="text-xs text-slate-500">{tx.merchant}</div>
+                                                )}
+                                            </td>
+                                            <td className={`text-right font-mono font-medium ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
+                                                {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
+                    {recentTxs.length > 0 && (
+                        <div className="p-4 border-t border-slate-700/50">
+                            <Link
+                                href="/transactions"
+                                className="flex items-center justify-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+                            >
+                                View all transactions
+                                <ArrowRight className="w-4 h-4" />
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 {/* Payment Status */}
