@@ -253,6 +253,46 @@ export async function deleteFlatmateAction(id: string) {
 }
 
 // ============================================
+// User Self-Update Actions
+// ============================================
+
+export async function updateMySettingsAction(formData: FormData) {
+    const session = await auth();
+    if (!session?.user?.email) {
+        return { error: "Unauthorized" };
+    }
+
+    const bankAccountPattern = formData.get("bankAccountPattern")?.toString().trim() || null;
+    const cardSuffix = formData.get("cardSuffix")?.toString().trim() || null;
+    const matchingName = formData.get("matchingName")?.toString().trim() || null;
+
+    // Validate card suffix format (should be 4 digits)
+    if (cardSuffix && !/^\d{4}$/.test(cardSuffix)) {
+        return { error: "Card suffix must be exactly 4 digits" };
+    }
+
+    try {
+        await db
+            .update(users)
+            .set({
+                bankAccountPattern,
+                cardSuffix,
+                matchingName,
+                updatedAt: new Date(),
+            })
+            .where(eq(users.email, session.user.email));
+
+        revalidatePath("/settings");
+        revalidatePath("/users");
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating settings:", error);
+        return { error: "Failed to update settings" };
+    }
+}
+
+// ============================================
 // Transaction Matching Actions
 // ============================================
 

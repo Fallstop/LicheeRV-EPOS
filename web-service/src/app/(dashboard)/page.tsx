@@ -1,9 +1,10 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { transactions, users } from "@/lib/db/schema";
-import { desc, sql, ne } from "drizzle-orm";
-import { DollarSign, TrendingUp, TrendingDown, Users, RefreshCw, ArrowRight } from "lucide-react";
+import { desc, sql, ne, eq } from "drizzle-orm";
+import { DollarSign, TrendingUp, TrendingDown, Users, ArrowRight } from "lucide-react";
 import { SyncButton } from "@/components/SyncButton";
+import { RecentTransactions } from "@/components/RecentTransactions";
 import { getLastSyncTime, canTriggerManualRefresh } from "@/lib/sync";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
@@ -58,8 +59,30 @@ export default async function DashboardPage() {
     const lastSyncTime = await getLastSyncTime();
     const { canRefresh, nextRefreshAt } = await canTriggerManualRefresh();
 
-    // Fetch recent transactions
-    const recentTxs = await db.select().from(transactions).orderBy(desc(transactions.date)).limit(5);
+    // Fetch recent transactions with matched user names
+    const recentTxs = await db
+        .select({
+            id: transactions.id,
+            akahuId: transactions.akahuId,
+            date: transactions.date,
+            amount: transactions.amount,
+            description: transactions.description,
+            merchant: transactions.merchant,
+            merchantLogo: transactions.merchantLogo,
+            category: transactions.category,
+            rawData: transactions.rawData,
+            cardSuffix: transactions.cardSuffix,
+            otherAccount: transactions.otherAccount,
+            matchedUserId: transactions.matchedUserId,
+            matchType: transactions.matchType,
+            matchConfidence: transactions.matchConfidence,
+            createdAt: transactions.createdAt,
+            matchedUserName: users.name,
+        })
+        .from(transactions)
+        .leftJoin(users, eq(transactions.matchedUserId, users.id))
+        .orderBy(desc(transactions.date))
+        .limit(5);
 
     // Get stats
     const stats = await db
@@ -136,49 +159,11 @@ export default async function DashboardPage() {
                         <h2 className="font-semibold text-lg">Recent Transactions</h2>
                         <p className="text-sm text-slate-400">Latest activity on the flat account</p>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Description</th>
-                                    <th className="text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {recentTxs.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={3} className="text-center py-12 text-slate-500">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <RefreshCw className="w-8 h-8 text-slate-600" />
-                                                <p>No transactions synced yet</p>
-                                                <p className="text-xs">Click Sync to fetch transactions from Akahu</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    recentTxs.map((tx) => (
-                                        <tr key={tx.id}>
-                                            <td className="text-slate-400">
-                                                {new Date(tx.date).toLocaleDateString()}
-                                            </td>
-                                            <td>
-                                                <div className="font-medium text-slate-200 truncate max-w-[200px]">
-                                                    {tx.description}
-                                                </div>
-                                                {tx.merchant && (
-                                                    <div className="text-xs text-slate-500">{tx.merchant}</div>
-                                                )}
-                                            </td>
-                                            <td className={`text-right font-mono font-medium ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
-                                                {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    <RecentTransactions
+                        transactions={recentTxs}
+                        emptyMessage="No transactions synced yet"
+                        emptySubMessage="Click Sync to fetch transactions from Akahu"
+                    />
                     {recentTxs.length > 0 && (
                         <div className="p-4 border-t border-slate-700/50">
                             <Link

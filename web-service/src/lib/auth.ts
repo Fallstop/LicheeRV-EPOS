@@ -2,8 +2,8 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
-import { eq } from "drizzle-orm";
-import { users } from "@/lib/db/schema";
+import { eq, and, isNull } from "drizzle-orm";
+import { users, accounts } from "@/lib/db/schema";
 
 // Check if a user is whitelisted (exists in our users table)
 async function isWhitelisted(email: string): Promise<boolean> {
@@ -49,6 +49,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const whitelisted = await isWhitelisted(user.email);
             if (!whitelisted) {
                 return "/auth/not-authorized";
+            }
+
+            // Update emailVerified for existing users who haven't signed in yet
+            // This handles pre-created flatmate accounts
+            if (account?.provider === "google" && profile?.email_verified) {
+                const existingUser = await db
+                    .select()
+                    .from(users)
+                    .where(eq(users.email, user.email))
+                    .limit(1);
+
+                if (existingUser.length > 0 && existingUser[0].emailVerified === null) {
+                    await db
+                        .update(users)
+                        .set({ 
+                            emailVerified: new Date(),
+                            name: existingUser[0].name || profile.name || null,
+                            image: profile.picture || null,
+                        })
+                        .where(eq(users.id, existingUser[0].id));
+                }
             }
 
             return true;

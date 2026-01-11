@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { UserPlus, Building2, DollarSign } from "lucide-react";
 import { AddFlatmateDialog } from "./AddFlatmateDialog";
 import { FlatmateCard } from "./FlatmateCard";
+import { RematchButton } from "./RematchButton";
 
 export default async function UsersPage() {
     const session = await auth();
@@ -62,7 +63,10 @@ export default async function UsersPage() {
                         Add and manage flatmates who can access the shared account
                     </p>
                 </div>
-                <AddFlatmateDialog />
+                <div className="flex items-center gap-3">
+                    <RematchButton />
+                    <AddFlatmateDialog />
+                </div>
             </div>
 
             {/* Stats */}
