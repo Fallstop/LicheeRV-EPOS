@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Filter, Download, ChevronDown, ChevronUp, X, RefreshCw, ArrowDownRight, ArrowUpRight, CreditCard } from "lucide-react";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { startOfDay, isSaturday, previousSaturday } from "date-fns";
@@ -10,48 +11,39 @@ import type { Transaction as TransactionType, User } from "@/lib/db/schema";
 import Image from "next/image";
 
 interface TransactionListProps {
-    initialTransactions: (TransactionType & { matchedUserName?: string | null })[];
+    transactions: (TransactionType & { matchedUserName?: string | null })[];
     flatmates: Pick<User, "id" | "name" | "email">[];
-    hasMore: boolean;
-    loadMoreAction: (offset: number) => Promise<(TransactionType & { matchedUserName?: string | null })[]>;
 }
 
 const TIMEZONE = "Pacific/Auckland";
-const PAGE_SIZE = 50;
+const ROW_HEIGHT = 72;
 
-// Get the Saturday that starts the week containing this date
-// Week runs Saturday to Friday, so we find the previous/current Saturday
+type ListItem = 
+    | { type: "transaction"; tx: TransactionType & { matchedUserName?: string | null }; index: number }
+    | { type: "week-header"; weekStart: Date };
+
 function getWeekStartSaturday(date: Date): Date {
     const zonedDate = toZonedTime(date, TIMEZONE);
     const startOfDayZoned = startOfDay(zonedDate);
     
-    // If it's Saturday, return the start of this Saturday
     if (isSaturday(zonedDate)) {
         return startOfDayZoned;
     }
-    // Otherwise, get the previous Saturday
     return previousSaturday(startOfDayZoned);
 }
 
-// Check if two dates are in different weeks (Saturday-Friday weeks)
-// Returns the Saturday of the newer week if they're in different weeks
 function crossesWeekBoundary(date1: Date, date2: Date): Date | null {
     const weekStart1 = getWeekStartSaturday(date1);
     const weekStart2 = getWeekStartSaturday(date2);
     
-    // If they have different week starts, return the Saturday of the newer week
-    // (which appears AFTER the older transactions in the list, acting as header for newer week)
     if (weekStart1.getTime() !== weekStart2.getTime()) {
-        // Return the more recent Saturday (start of week containing date1)
         return weekStart1.getTime() > weekStart2.getTime() ? weekStart1 : weekStart2;
     }
     return null;
 }
 
-export function TransactionList({ initialTransactions, flatmates, hasMore: initialHasMore, loadMoreAction }: TransactionListProps) {
-    const [transactions, setTransactions] = useState(initialTransactions);
-    const [hasMore, setHasMore] = useState(initialHasMore);
-    const [loading, setLoading] = useState(false);
+export function TransactionList({ transactions, flatmates }: TransactionListProps) {
+    const parentRef = useRef<HTMLDivElement>(null);
     const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null }) | null>(null);
     
     // Filters
@@ -67,7 +59,6 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
     // Filter transactions
     const filteredTransactions = useMemo(() => {
         return transactions.filter((tx) => {
-            // Search query
             if (searchQuery) {
                 const query = searchQuery.toLowerCase();
                 const matchesSearch = 
@@ -77,7 +68,6 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                 if (!matchesSearch) return false;
             }
 
-            // Date range
             if (dateFrom) {
                 const fromDate = new Date(dateFrom);
                 if (tx.date < fromDate) return false;
@@ -88,7 +78,6 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                 if (tx.date > toDate) return false;
             }
 
-            // Flatmate filter
             if (selectedFlatmate !== "all") {
                 if (selectedFlatmate === "unmatched") {
                     if (tx.matchedUserId) return false;
@@ -97,11 +86,9 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                 }
             }
 
-            // Amount type
             if (amountType === "in" && tx.amount <= 0) return false;
             if (amountType === "out" && tx.amount >= 0) return false;
 
-            // Amount range
             const absAmount = Math.abs(tx.amount);
             if (amountMin && absAmount < parseFloat(amountMin)) return false;
             if (amountMax && absAmount > parseFloat(amountMax)) return false;
@@ -110,23 +97,34 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
         });
     }, [transactions, searchQuery, dateFrom, dateTo, selectedFlatmate, amountMin, amountMax, amountType]);
 
-    // Load more transactions
-    const loadMore = useCallback(async () => {
-        if (loading || !hasMore) return;
-        setLoading(true);
+    // Build list items with week headers inserted
+    const listItems = useMemo((): ListItem[] => {
+        const items: ListItem[] = [];
         
-        try {
-            const newTransactions = await loadMoreAction(transactions.length);
-            if (newTransactions.length < PAGE_SIZE) {
-                setHasMore(false);
+        for (let i = 0; i < filteredTransactions.length; i++) {
+            const tx = filteredTransactions[i];
+            const prevTx = i > 0 ? filteredTransactions[i - 1] : null;
+            const weekBoundary = prevTx ? crossesWeekBoundary(prevTx.date, tx.date) : null;
+            
+            if (weekBoundary) {
+                items.push({ type: "week-header", weekStart: weekBoundary });
             }
-            setTransactions(prev => [...prev, ...newTransactions]);
-        } catch (error) {
-            console.error("Failed to load more transactions:", error);
-        } finally {
-            setLoading(false);
+            items.push({ type: "transaction", tx, index: i });
         }
-    }, [loading, hasMore, transactions.length, loadMoreAction]);
+        
+        return items;
+    }, [filteredTransactions]);
+
+    // Virtual list
+    const virtualizer = useVirtualizer({
+        count: listItems.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: (index) => {
+            const item = listItems[index];
+            return item.type === "week-header" ? 40 : ROW_HEIGHT;
+        },
+        overscan: 10,
+    });
 
     // Export to CSV
     const exportCSV = useCallback(() => {
@@ -170,13 +168,13 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
     const stats = useMemo(() => {
         const totalIn = filteredTransactions.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
         const totalOut = filteredTransactions.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-        return { totalIn, totalOut, count: filteredTransactions.length };
-    }, [filteredTransactions]);
+        return { totalIn, totalOut, count: filteredTransactions.length, totalCount: transactions.length };
+    }, [filteredTransactions, transactions.length]);
 
     return (
-        <>
+        <div className="flex flex-col flex-1 min-h-0">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 shrink-0">
                 <div className="glass rounded-xl p-4 flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-500/20">
                         <ArrowDownRight className="w-5 h-5 text-emerald-400" />
@@ -201,13 +199,13 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                     </div>
                     <div>
                         <p className="text-sm text-slate-400">Showing</p>
-                        <p className="text-xl font-bold">{stats.count} transactions</p>
+                        <p className="text-xl font-bold">{stats.count.toLocaleString()} of {stats.totalCount.toLocaleString()}</p>
                     </div>
                 </div>
             </div>
 
             {/* Search and Filter Bar */}
-            <div className="mb-6 space-y-4">
+            <div className="mb-6 space-y-4 shrink-0">
                 <div className="flex gap-3">
                     {/* Search */}
                     <div className="flex-1 relative">
@@ -342,72 +340,97 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                 )}
             </div>
 
-            {/* Transactions Table */}
-            <div className="glass rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th className="pr-0!">Date & Time</th>
-                                <th className="px-0!"></th>
-                                <th>Description</th>
-                                <th className="hidden md:table-cell">Category</th>
-                                <th>Match</th>
-                                <th className="text-right">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredTransactions.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="text-center py-12 text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <RefreshCw className="w-8 h-8 text-slate-600" />
-                                            <p>No transactions found</p>
-                                            {hasActiveFilters && (
-                                                <button
-                                                    onClick={clearFilters}
-                                                    className="text-emerald-400 hover:text-emerald-300 text-sm"
-                                                >
-                                                    Clear filters
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredTransactions.map((tx, index) => {
-                                    const prevTx = index > 0 ? filteredTransactions[index - 1] : null;
-                                    const weekBoundary = prevTx ? crossesWeekBoundary(prevTx.date, tx.date) : null;
-                                    
+            {/* Virtual Scrolling List */}
+            <div className="glass rounded-2xl overflow-hidden flex flex-col flex-1 min-h-0">
+                {/* Header */}
+                <div className="grid grid-cols-[120px_32px_1fr_150px_150px_100px] md:grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 py-3 border-b border-slate-700/50 text-xs font-medium text-slate-400 uppercase tracking-wider shrink-0">
+                    <div>Date & Time</div>
+                    <div></div>
+                    <div>Description</div>
+                    <div className="hidden md:block">Category</div>
+                    <div>Match</div>
+                    <div className="text-right">Amount</div>
+                </div>
+                
+                {/* Virtual List Container */}
+                <div
+                    ref={parentRef}
+                    className="flex-1 overflow-auto min-h-0"
+                >
+                    {filteredTransactions.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                            <RefreshCw className="w-8 h-8 text-slate-600 mb-2" />
+                            <p>No transactions found</p>
+                            {hasActiveFilters && (
+                                <button
+                                    onClick={clearFilters}
+                                    className="text-emerald-400 hover:text-emerald-300 text-sm mt-2"
+                                >
+                                    Clear filters
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        <div
+                            style={{
+                                height: `${virtualizer.getTotalSize()}px`,
+                                width: "100%",
+                                position: "relative",
+                            }}
+                        >
+                            {virtualizer.getVirtualItems().map((virtualRow) => {
+                                const item = listItems[virtualRow.index];
+                                
+                                if (item.type === "week-header") {
                                     return (
-                                        <>
-                                            {weekBoundary && (
-                                                <tr key={`week-${weekBoundary.getTime()}`} className="pointer-events-none">
-                                                    <td colSpan={6} className="p-0! border-0!">
-                                                        <div className="flex items-center gap-3 py-2 px-4">
-                                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
-                                                            <span className="text-xs font-medium text-amber-400/80 whitespace-nowrap">
-                                                                Week of {formatInTimeZone(weekBoundary, TIMEZONE, "d MMM")}
-                                                            </span>
-                                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            <tr 
-                                                key={tx.id} 
-                                                className="cursor-pointer"
-                                                onClick={() => setSelectedTransaction(tx)}
-                                            >
-                                        <td className="text-slate-400 pr-0!">
-                                            <div className="text-slate-200">
+                                        <div
+                                            key={`week-${item.weekStart.getTime()}`}
+                                            style={{
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                width: "100%",
+                                                height: `${virtualRow.size}px`,
+                                                transform: `translateY(${virtualRow.start}px)`,
+                                            }}
+                                            className="flex items-center gap-3 px-4"
+                                        >
+                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
+                                            <span className="text-xs font-medium text-amber-400/80 whitespace-nowrap">
+                                                Week of {formatInTimeZone(item.weekStart, TIMEZONE, "d MMM")}
+                                            </span>
+                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
+                                        </div>
+                                    );
+                                }
+                                
+                                const tx = item.tx;
+                                return (
+                                    <div
+                                        key={tx.id}
+                                        style={{
+                                            position: "absolute",
+                                            top: 0,
+                                            left: 0,
+                                            width: "100%",
+                                            height: `${virtualRow.size}px`,
+                                            transform: `translateY(${virtualRow.start}px)`,
+                                        }}
+                                        className="grid grid-cols-[120px_32px_1fr_150px_150px_100px] md:grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 items-center hover:bg-slate-800/30 cursor-pointer border-b border-slate-700/30"
+                                        onClick={() => setSelectedTransaction(tx)}
+                                    >
+                                        {/* Date & Time */}
+                                        <div className="text-slate-400">
+                                            <div className="text-slate-200 text-sm">
                                                 {formatInTimeZone(tx.date, TIMEZONE, "d MMM yyyy")}
                                             </div>
                                             <div className="text-xs text-slate-500">
                                                 {formatInTimeZone(tx.date, TIMEZONE, "h:mm a")}
                                             </div>
-                                        </td>
-                                        <td className="px-0!">
+                                        </div>
+                                        
+                                        {/* Logo */}
+                                        <div className="flex items-center justify-center">
                                             {tx.merchantLogo && (
                                                 <Image
                                                     src={tx.merchantLogo}
@@ -419,74 +442,58 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                                                     referrerPolicy="no-referrer"
                                                 />
                                             )}
-                                        </td>
-                                        <td>
-                                                <div className="min-w-0">
-                                                    <div className="font-medium text-slate-200 line-clamp-1">{tx.description}</div>
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        {tx.merchant && (
-                                                            <span className="text-xs text-slate-500 line-clamp-1">{tx.merchant}</span>
-                                                        )}
-                                                        {tx.cardSuffix && (
-                                                            <span className="inline-flex items-center gap-1 text-xs text-purple-400">
-                                                                <CreditCard className="w-3 h-3" />
-                                                                {tx.cardSuffix}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                        </td>
-                                        <td className="hidden md:table-cell">
+                                        </div>
+                                        
+                                        {/* Description */}
+                                        <div className="min-w-0">
+                                            <div className="font-medium text-slate-200 line-clamp-1 text-sm">{tx.description}</div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {tx.merchant && (
+                                                    <span className="text-xs text-slate-500 line-clamp-1">{tx.merchant}</span>
+                                                )}
+                                                {tx.cardSuffix && (
+                                                    <span className="inline-flex items-center gap-1 text-xs text-purple-400">
+                                                        <CreditCard className="w-3 h-3" />
+                                                        {tx.cardSuffix}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Category */}
+                                        <div className="hidden md:block">
                                             {tx.category && (
-                                                <span className="badge badge-neutral">{tx.category}</span>
+                                                <span className="badge badge-neutral text-xs">{tx.category}</span>
                                             )}
-                                        </td>
-                                        <td>
+                                        </div>
+                                        
+                                        {/* Match */}
+                                        <div>
                                             {tx.matchedUserId ? (
-                                                <span className={`badge ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
+                                                <span className={`badge text-xs ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
                                                     {tx.matchedUserName || "Matched"}
                                                 </span>
                                             ) : (
                                                 <span className="text-slate-600 text-xs">-</span>
                                             )}
-                                        </td>
-                                        <td className={`text-right font-mono font-medium ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
+                                        </div>
+                                        
+                                        {/* Amount */}
+                                        <div className={`text-right font-mono font-medium text-sm ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
                                             {tx.amount > 0 ? "+" : ""}
                                             ${Math.abs(tx.amount).toFixed(2)}
-                                        </td>
-                                    </tr>
-                                        </>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Load More */}
-            {hasMore && (
-                <div className="mt-6 text-center">
-                    <button
-                        onClick={loadMore}
-                        disabled={loading}
-                        className="px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-50 transition-colors font-medium inline-flex items-center gap-2"
-                    >
-                        {loading ? (
-                            <>
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                                Loading...
-                            </>
-                        ) : (
-                            "Load More Transactions"
-                        )}
-                    </button>
-                </div>
-            )}
-
-            {!hasMore && filteredTransactions.length > 0 && (
-                <p className="text-center text-slate-500 text-sm mt-6">
-                    All {filteredTransactions.length} transactions loaded
+            {filteredTransactions.length > 0 && (
+                <p className="text-center text-slate-500 text-sm mt-6 shrink-0">
+                    {stats.count.toLocaleString()} transactions
                 </p>
             )}
 
@@ -497,6 +504,6 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                     onClose={() => setSelectedTransaction(null)}
                 />
             )}
-        </>
+        </div>
     );
 }

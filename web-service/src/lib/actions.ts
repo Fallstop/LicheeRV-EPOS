@@ -14,6 +14,38 @@ export async function signOutAction() {
     await nextAuthSignOut({ redirectTo: "/auth/signin" });
 }
 
+export async function getAllTransactionsAction() {
+    const session = await auth();
+    if (!session?.user) {
+        return [];
+    }
+
+    const txsWithUsers = await db
+        .select({
+            id: transactions.id,
+            akahuId: transactions.akahuId,
+            date: transactions.date,
+            amount: transactions.amount,
+            description: transactions.description,
+            merchant: transactions.merchant,
+            merchantLogo: transactions.merchantLogo,
+            category: transactions.category,
+            rawData: transactions.rawData,
+            cardSuffix: transactions.cardSuffix,
+            otherAccount: transactions.otherAccount,
+            matchedUserId: transactions.matchedUserId,
+            matchType: transactions.matchType,
+            matchConfidence: transactions.matchConfidence,
+            createdAt: transactions.createdAt,
+            matchedUserName: users.name,
+        })
+        .from(transactions)
+        .leftJoin(users, eq(transactions.matchedUserId, users.id))
+        .orderBy(desc(transactions.date));
+
+    return txsWithUsers;
+}
+
 export async function loadMoreTransactionsAction(offset: number) {
     const session = await auth();
     if (!session?.user) {

@@ -6,9 +6,6 @@ import { SyncButton } from "@/components/SyncButton";
 import { TransactionList } from "@/components/TransactionList";
 import { getLastSyncTime, canTriggerManualRefresh } from "@/lib/sync";
 import { formatDistanceToNow } from "date-fns";
-import { loadMoreTransactionsAction } from "@/lib/actions";
-
-const PAGE_SIZE = 50;
 
 export default async function TransactionsPage() {
     const session = await auth();
@@ -24,7 +21,7 @@ export default async function TransactionsPage() {
         .from(users)
         .where(ne(users.role, "admin"));
 
-    // Fetch initial transactions with matched user names
+    // Fetch ALL transactions with matched user names
     const txsWithUsers = await db
         .select({
             id: transactions.id,
@@ -46,20 +43,11 @@ export default async function TransactionsPage() {
         })
         .from(transactions)
         .leftJoin(users, eq(transactions.matchedUserId, users.id))
-        .orderBy(desc(transactions.date))
-        .limit(PAGE_SIZE);
-
-    const hasMore = txsWithUsers.length === PAGE_SIZE;
-
-    // Bind the action with the server function
-    async function loadMore(offset: number) {
-        "use server";
-        return loadMoreTransactionsAction(offset);
-    }
+        .orderBy(desc(transactions.date));
 
     return (
-        <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="w-7xl mx-auto flex flex-col h-full min-h-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold">Transactions</h1>
                     <p className="text-slate-400 mt-1">
@@ -77,10 +65,8 @@ export default async function TransactionsPage() {
             </div>
 
             <TransactionList
-                initialTransactions={txsWithUsers}
+                transactions={txsWithUsers}
                 flatmates={flatmates}
-                hasMore={hasMore}
-                loadMoreAction={loadMore}
             />
         </div>
     );
