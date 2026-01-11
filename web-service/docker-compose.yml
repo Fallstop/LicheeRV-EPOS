@@ -11,6 +11,7 @@ services:
         - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
         - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
         - AUTH_SECRET=${AUTH_SECRET}
+        - AUTH_URL=${AUTH_URL}
         - ADMIN_USER=${ADMIN_USER}
         - TIMEZONE=${TIMEZONE:-Pacific/Auckland}
         - CRON_SECRET=${CRON_SECRET}
