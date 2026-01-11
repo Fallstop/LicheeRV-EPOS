@@ -42,7 +42,7 @@ function WeekDetailRow({ week, isExpanded, onToggle }: {
                     )}
                     <div className="text-left">
                         <p className="font-medium">
-                            Week of {format(week.weekStart, "d MMM yyyy")}
+                            {format(week.weekStart, "d MMM")} – {format(week.weekEnd, "d MMM yyyy")}
                         </p>
                         <p className="text-sm text-slate-400">
                             Due {format(week.dueDate, "EEEE, d MMM")}

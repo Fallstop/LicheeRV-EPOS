@@ -116,7 +116,7 @@ export function PaymentHistoryChart({ balance }: PaymentHistoryChartProps) {
         for (const week of balance.weeklyBreakdown) {
             // Get only rent payment transactions for this week
             const rentPayments = week.paymentTransactions.filter(
-                (tx) => tx.matchType === "rent_payment"
+                (tx) => tx.isRentPayment
             );
             const weekPaid = rentPayments.reduce((sum, tx) => sum + tx.amount, 0);
 

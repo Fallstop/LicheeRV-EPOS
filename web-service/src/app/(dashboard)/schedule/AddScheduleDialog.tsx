@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { addScheduleAction } from "@/lib/actions";
-import { format } from "date-fns";
+import { format, previousSaturday, isSaturday } from "date-fns";
+import { WeekDatePicker } from "@/components/WeekDatePicker";
 
 interface AddScheduleDialogProps {
     flatmates: Array<{ id: string; name: string | null; email: string }>;
@@ -12,6 +13,13 @@ interface AddScheduleDialogProps {
     defaultWeeklyAmount?: number;
     onClose?: () => void;
     isOpen?: boolean;
+}
+
+// Get the nearest Saturday for default start date
+function getDefaultSaturday(): string {
+    const today = new Date();
+    const saturday = isSaturday(today) ? today : previousSaturday(today);
+    return format(saturday, "yyyy-MM-dd");
 }
 
 export function AddScheduleDialog({ 
@@ -69,8 +77,6 @@ export function AddScheduleDialog({
 
     if (!isOpen) return null;
 
-    const today = format(new Date(), "yyyy-MM-dd");
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
@@ -125,26 +131,20 @@ export function AddScheduleDialog({
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
+                        <WeekDatePicker
+                            name="startDate"
+                            label="Start Date"
+                            weekAlign="start"
+                            required
+                            defaultValue={defaultStartDate || getDefaultSaturday()}
+                            placeholder="Select Saturday"
+                        />
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">
-                                Start Date *
-                            </label>
-                            <input
-                                type="date"
-                                name="startDate"
-                                required
-                                defaultValue={defaultStartDate || today}
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">
-                                End Date
-                            </label>
-                            <input
-                                type="date"
+                            <WeekDatePicker
                                 name="endDate"
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                label="End Date"
+                                weekAlign="end"
+                                placeholder="Select Friday"
                             />
                             <p className="text-xs text-slate-500 mt-1">Leave empty for ongoing</p>
                         </div>

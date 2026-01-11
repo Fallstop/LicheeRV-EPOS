@@ -5,10 +5,34 @@ import {
     eachWeekOfInterval,
     startOfWeek,
     endOfWeek,
+    startOfDay,
     isAfter,
-    nextThursday,
     addDays,
 } from "date-fns";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
+
+// Get timezone from environment, default to Pacific/Auckland
+const TIMEZONE = process.env.TIMEZONE || "Pacific/Auckland";
+
+/**
+ * Get the start of a week (Saturday 00:00:00) in the configured timezone.
+ * Returns a UTC Date that represents Saturday midnight in the timezone.
+ */
+function getWeekStartInTimezone(date: Date): Date {
+    const zonedDate = toZonedTime(date, TIMEZONE);
+    const weekStartZoned = startOfWeek(zonedDate, { weekStartsOn: 6 });
+    return fromZonedTime(weekStartZoned, TIMEZONE);
+}
+
+/**
+ * Get the end of a week (Friday 23:59:59.999) in the configured timezone.
+ * Returns a UTC Date that represents Friday end-of-day in the timezone.
+ */
+function getWeekEndInTimezone(date: Date): Date {
+    const zonedDate = toZonedTime(date, TIMEZONE);
+    const weekEndZoned = endOfWeek(zonedDate, { weekStartsOn: 6 });
+    return fromZonedTime(weekEndZoned, TIMEZONE);
+}
 
 /**
  * Get the configured analysis start date from system settings.
@@ -32,7 +56,7 @@ export async function getAnalysisStartDate(): Promise<Date | null> {
 export interface WeeklyObligation {
     weekStart: Date;
     weekEnd: Date;
-    dueDate: Date; // Thursday
+    dueDate: Date; // Thursday (due before Friday rent payout)
     amountDue: number;
     amountPaid: number;
     balance: number; // Positive = overpaid, Negative = underpaid
@@ -43,6 +67,21 @@ export interface WeeklyObligation {
         description: string;
         matchType: string | null;
         confidence: number | null;
+        isRentPayment: boolean;
+    }>;
+    allAccountTransactions: Array<{
+        id: string;
+        date: Date;
+        amount: number;
+        description: string;
+        merchant: string | null;
+        merchantLogo: string | null;
+        cardSuffix: string | null;
+        matchedUserId: string | null;
+        matchedUserName: string | null;
+        matchType: string | null;
+        isThisUser: boolean;
+        isRentPayment: boolean;
     }>;
 }
 
@@ -65,23 +104,14 @@ export interface PaymentSummary {
 }
 
 /**
- * Get the Thursday that serves as the due date for a given date.
- * Payments are due each Thursday.
+ * Get the Thursday that serves as the due date for a given week.
+ * Week starts Saturday, ends Friday. Payments are due Thursday (before Friday rent payout).
  */
-function getDueThursday(date: Date): Date {
-    const day = date.getDay();
-    // If it's Thursday (4) or earlier, due date is the current week's Thursday
-    // If it's after Thursday, due date is next Thursday
-    if (day <= 4) {
-        // Find this week's Thursday
-        const diff = 4 - day;
-        const thursday = new Date(date);
-        thursday.setDate(date.getDate() + diff);
-        return thursday;
-    } else {
-        // Find next Thursday
-        return nextThursday(date);
-    }
+function getDueThursday(weekStart: Date): Date {
+    // Week starts on Saturday, so Thursday is 5 days later
+    const thursday = new Date(weekStart);
+    thursday.setDate(weekStart.getDate() + 5);
+    return thursday;
 }
 
 /**
@@ -92,10 +122,15 @@ function getWeeklyAmount(
     schedules: Array<{ startDate: Date; endDate: Date | null; weeklyAmount: number; createdAt: Date | null }>,
     weekStart: Date
 ): number {
+    // Normalize weekStart to start of day for consistent comparison
+    const weekStartDay = startOfDay(weekStart);
+    
     // Find all schedules that cover this week
     const applicableSchedules = schedules.filter((s) => {
-        const scheduleEnd = s.endDate ?? new Date(2100, 0, 1);
-        return s.startDate <= weekStart && scheduleEnd >= weekStart;
+        // Normalize schedule dates to start of day for date-only comparison
+        const scheduleStartDay = startOfDay(s.startDate);
+        const scheduleEndDay = s.endDate ? startOfDay(s.endDate) : new Date(2100, 0, 1);
+        return scheduleStartDay <= weekStartDay && scheduleEndDay >= weekStartDay;
     });
 
     if (applicableSchedules.length === 0) {
@@ -124,36 +159,69 @@ async function calculateFlatmateBalance(
         .from(paymentSchedules)
         .where(eq(paymentSchedules.userId, userId));
 
-    // Get all rent payment transactions for this user (only rent_payment match type)
-    const userTransactions = await db
+    // Get ALL transactions matched to this user (for display in weekly breakdown)
+    const allUserTransactions = await db
         .select()
         .from(transactions)
         .where(
             and(
                 eq(transactions.matchedUserId, userId),
-                eq(transactions.matchType, "rent_payment"),
                 gte(transactions.date, startDate),
                 lte(transactions.date, endDate),
                 sql`${transactions.amount} > 0` // Only incoming payments
             )
         );
 
+    // Filter to just rent payments for balance calculations
+    const rentPaymentTransactions = allUserTransactions.filter(
+        (tx) => tx.matchType === "rent_payment"
+    );
+
+    // Get ALL positive transactions to the account (for showing complete account view)
+    const allAccountTransactionsRaw = await db
+        .select({
+            id: transactions.id,
+            date: transactions.date,
+            amount: transactions.amount,
+            description: transactions.description,
+            merchant: transactions.merchant,
+            merchantLogo: transactions.merchantLogo,
+            cardSuffix: transactions.cardSuffix,
+            matchedUserId: transactions.matchedUserId,
+            matchType: transactions.matchType,
+            userName: users.name,
+        })
+        .from(transactions)
+        .leftJoin(users, eq(transactions.matchedUserId, users.id))
+        .where(
+            and(
+                gte(transactions.date, startDate),
+                lte(transactions.date, endDate),
+                sql`${transactions.amount} > 0`
+            )
+        )
+        .orderBy(transactions.date);
+
     // Generate weeks from startDate to endDate
-    // Week starts on Monday (default for date-fns)
+    // Week starts on Saturday, ends on Friday (rent paid on Friday)
     const weeks = eachWeekOfInterval(
         { start: startDate, end: endDate },
-        { weekStartsOn: 1 }
+        { weekStartsOn: 6 }
     );
 
     const weeklyBreakdown: WeeklyObligation[] = [];
     let totalDue = 0;
     
-    // Track assigned transactions to avoid double-counting
-    const assignedTransactionIds = new Set<string>();
+    // Track assigned rent payment transactions to avoid double-counting in balance
+    const assignedRentPaymentIds = new Set<string>();
+    // Track all assigned transactions for display
+    const assignedAllTransactionIds = new Set<string>();
 
-    for (const weekStart of weeks) {
-        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-        const dueDate = getDueThursday(weekStart);
+    for (const weekStartRaw of weeks) {
+        // Get timezone-aware week boundaries
+        const weekStart = getWeekStartInTimezone(weekStartRaw);
+        const weekEnd = getWeekEndInTimezone(weekStartRaw);
+        const dueDate = getDueThursday(weekStartRaw);
 
         // Skip future weeks that haven't had their due date yet
         const now = new Date();
@@ -161,32 +229,53 @@ async function calculateFlatmateBalance(
             continue;
         }
 
-        const amountDue = getWeeklyAmount(schedules, weekStart);
+        const amountDue = getWeeklyAmount(schedules, weekStartRaw);
 
-        // Find transactions that count toward this week
-        // We look for payments made in the week leading up to and including the due date
-        // Also consider payments that might be slightly late (within a few days after)
-        // Only include transactions that haven't been assigned to a previous week
-        const weekPayments = userTransactions.filter((tx) => {
-            if (assignedTransactionIds.has(tx.id)) {
+        // Payment window for matching rent payments (allows some flexibility for late payments)
+        const paymentWindowStart = addDays(dueDate, -7);
+        const paymentWindowEnd = addDays(dueDate, 3);
+
+        // Find ALL transactions in this week's payment window (for user's payment display)
+        const allWeekTransactions = allUserTransactions.filter((tx) => {
+            if (assignedAllTransactionIds.has(tx.id)) {
                 return false;
             }
             const txDate = tx.date;
-            // Consider payments within 7 days before and 3 days after the due date
-            const windowStart = addDays(dueDate, -7);
-            const windowEnd = addDays(dueDate, 3);
-            return txDate >= windowStart && txDate <= windowEnd;
+            return txDate >= paymentWindowStart && txDate <= paymentWindowEnd;
         });
 
-        // Mark these transactions as assigned
-        for (const tx of weekPayments) {
-            assignedTransactionIds.add(tx.id);
+        // Find rent payment transactions for balance calculation
+        const weekRentPayments = rentPaymentTransactions.filter((tx) => {
+            if (assignedRentPaymentIds.has(tx.id)) {
+                return false;
+            }
+            const txDate = tx.date;
+            return txDate >= paymentWindowStart && txDate <= paymentWindowEnd;
+        });
+
+        // Find ALL account transactions within the actual week boundaries (for transparency view)
+        // This shows exactly what happened in the Sat-Fri week period
+        const allAccountWeekTransactions = allAccountTransactionsRaw.filter((tx) => {
+            const txDate = tx.date;
+            return txDate >= weekStart && txDate <= weekEnd;
+        });
+
+        // Mark transactions as assigned
+        for (const tx of allWeekTransactions) {
+            assignedAllTransactionIds.add(tx.id);
+        }
+        for (const tx of weekRentPayments) {
+            assignedRentPaymentIds.add(tx.id);
         }
 
-        const amountPaid = weekPayments.reduce((sum, tx) => sum + tx.amount, 0);
+        // Only rent payments count toward the paid amount
+        const amountPaid = weekRentPayments.reduce((sum, tx) => sum + tx.amount, 0);
         const balance = amountPaid - amountDue;
 
         totalDue += amountDue;
+
+        // Create a set of rent payment IDs for quick lookup
+        const rentPaymentIdSet = new Set(weekRentPayments.map((tx) => tx.id));
 
         weeklyBreakdown.push({
             weekStart,
@@ -195,19 +284,34 @@ async function calculateFlatmateBalance(
             amountDue,
             amountPaid,
             balance,
-            paymentTransactions: weekPayments.map((tx) => ({
+            paymentTransactions: allWeekTransactions.map((tx) => ({
                 id: tx.id,
                 date: tx.date,
                 amount: tx.amount,
                 description: tx.description,
                 matchType: tx.matchType,
                 confidence: tx.matchConfidence,
+                isRentPayment: rentPaymentIdSet.has(tx.id),
+            })),
+            allAccountTransactions: allAccountWeekTransactions.map((tx) => ({
+                id: tx.id,
+                date: tx.date,
+                amount: tx.amount,
+                description: tx.description,
+                merchant: tx.merchant,
+                merchantLogo: tx.merchantLogo,
+                cardSuffix: tx.cardSuffix,
+                matchedUserId: tx.matchedUserId,
+                matchedUserName: tx.userName,
+                matchType: tx.matchType,
+                isThisUser: tx.matchedUserId === userId,
+                isRentPayment: tx.matchedUserId === userId && tx.matchType === "rent_payment",
             })),
         });
     }
 
-    // Calculate total paid from all unique transactions (no double counting)
-    const totalPaid = userTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+    // Calculate total paid from rent payments only (no double counting)
+    const totalPaid = rentPaymentTransactions.reduce((sum, tx) => sum + tx.amount, 0);
 
     // Get current weekly rate
     const now = new Date();
@@ -305,8 +409,8 @@ export async function getCurrentWeekSummary(): Promise<
     }>
 > {
     const now = new Date();
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const dueDate = getDueThursday(weekStart);
+    const weekStartRaw = startOfWeek(now, { weekStartsOn: 6 });
+    const dueDate = getDueThursday(weekStartRaw);
 
     // Get all users (including admin)
     const flatmates = await db
@@ -325,7 +429,7 @@ export async function getCurrentWeekSummary(): Promise<
                 .from(paymentSchedules)
                 .where(eq(paymentSchedules.userId, f.id));
 
-            const amountDue = getWeeklyAmount(schedules, weekStart);
+            const amountDue = getWeeklyAmount(schedules, weekStartRaw);
 
             // Get payments for this week (only rent_payment type)
             const windowStart = addDays(dueDate, -7);

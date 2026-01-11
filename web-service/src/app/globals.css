@@ -303,3 +303,53 @@ a,
 .glow-rose {
   box-shadow: 0 0 20px theme('colors.rose.500/30');
 }
+
+/* React Day Picker dark mode styles */
+.rdp-root {
+  --rdp-accent-color: theme('colors.emerald.500');
+  --rdp-accent-background-color: theme('colors.emerald.500/20');
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
+  --rdp-selected-font: bold;
+}
+
+.rdp-root .rdp-month_caption {
+  @apply text-white font-medium text-sm mb-2;
+}
+
+.rdp-root .rdp-weekday {
+  @apply text-slate-400 text-xs font-normal;
+}
+
+.rdp-root .rdp-day {
+  @apply text-slate-200 rounded-lg transition-colors;
+}
+
+.rdp-root .rdp-day:hover:not(.rdp-selected):not(.rdp-disabled) {
+  @apply bg-slate-700;
+}
+
+.rdp-root .rdp-selected .rdp-day_button {
+  @apply bg-emerald-600 text-white font-medium;
+}
+
+.rdp-root .rdp-today:not(.rdp-selected) .rdp-day_button {
+  @apply ring-1 ring-emerald-400;
+}
+
+.rdp-root .rdp-outside {
+  @apply text-slate-600;
+}
+
+.rdp-root .rdp-disabled {
+  @apply text-slate-700;
+}
+
+.rdp-root .rdp-nav .rdp-button_previous,
+.rdp-root .rdp-nav .rdp-button_next {
+  @apply text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg p-1;
+}
+
+.rdp-root .rdp-chevron {
+  @apply fill-current;
+}

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import type { FlatmateBalance, WeeklyObligation } from "@/lib/calculations";
 import { PaymentHistoryChart } from "@/components/PaymentHistoryChart";
 import { PaymentSummaryGrid } from "@/components/PaymentStatusCard";
+import { TransactionTable, type TransactionRowData } from "@/components/TransactionRow";
 
 interface AdminBalancesViewProps {
     flatmates: FlatmateBalance[];
@@ -36,14 +37,14 @@ function WeekTransactionsModal({
             onClick={onClose}
         >
             <div 
-                className="glass w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
+                className="glass w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
                 <div className="p-5 border-b border-slate-700/50 flex items-start justify-between">
                     <div>
                         <h2 className="text-lg font-semibold">
-                            Week of {format(week.weekStart, "d MMM yyyy")}
+                            {format(week.weekStart, "d MMM")} – {format(week.weekEnd, "d MMM yyyy")}
                         </h2>
                         <p className="text-sm text-slate-400 mt-1">
                             Due {format(week.dueDate, "EEEE, d MMM")}
@@ -90,39 +91,23 @@ function WeekTransactionsModal({
 
                 {/* Transactions */}
                 <div className="p-5 max-h-80 overflow-y-auto">
-                    {week.paymentTransactions.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500">
-                            <Clock className="w-10 h-10 mx-auto mb-3 text-slate-600" />
-                            <p>No transactions this week</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <p className="text-xs text-slate-500 uppercase tracking-wide">
-                                {week.paymentTransactions.length} Transaction{week.paymentTransactions.length !== 1 ? "s" : ""}
-                            </p>
-                            {week.paymentTransactions.map((tx) => (
-                                <div
-                                    key={tx.id}
-                                    className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50"
-                                >
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-medium truncate">{tx.description}</p>
-                                        <p className="text-sm text-slate-500 mt-1">
-                                            {format(tx.date, "EEEE, d MMM yyyy 'at' h:mm a")}
-                                        </p>
-                                        {tx.matchType && (
-                                            <span className="inline-block mt-2 px-2 py-1 rounded-lg bg-slate-700 text-xs text-slate-400">
-                                                {tx.matchType.replace("_", " ")}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className="text-emerald-400 font-semibold text-lg ml-4">
-                                        +{formatCurrency(tx.amount)}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">
+                        {week.allAccountTransactions.length} Transaction{week.allAccountTransactions.length !== 1 ? "s" : ""} to account
+                        {week.allAccountTransactions.some(tx => tx.isRentPayment) && (
+                            <>
+                                {" • "}
+                                <span className="text-emerald-400">
+                                    {week.allAccountTransactions.filter(tx => tx.isRentPayment).length} identified as rent
+                                </span>
+                            </>
+                        )}
+                    </p>
+                    <TransactionTable
+                        transactions={week.allAccountTransactions as TransactionRowData[]}
+                        showMatch={true}
+                        compact={true}
+                        emptyMessage="No transactions this week"
+                    />
                 </div>
             </div>
         </div>
@@ -152,7 +137,7 @@ function WeekRow({ week, onClick }: {
                 )}
                 <div className="text-left">
                     <p className="font-medium">
-                        Week of {format(week.weekStart, "d MMM yyyy")}
+                        {format(week.weekStart, "d MMM")} – {format(week.weekEnd, "d MMM")}
                     </p>
                     <p className="text-sm text-slate-400">
                         Due {format(week.dueDate, "EEEE, d MMM")}

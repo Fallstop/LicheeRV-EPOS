@@ -57,7 +57,7 @@ function WeekRow({ week }: { week: WeeklyObligation }) {
                 )}
                 <div>
                     <p className="text-sm font-medium">
-                        Week of {format(week.weekStart, "d MMM")}
+                        {format(week.weekStart, "d MMM")} – {format(week.weekEnd, "d MMM")}
                     </p>
                     <p className="text-xs text-slate-500">
                         Due {format(week.dueDate, "EEE d MMM")}

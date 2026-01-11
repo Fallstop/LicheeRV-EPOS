@@ -155,6 +155,8 @@ async function determineMatchType(
     const schedule = schedules[0];
     const expectedWeekly = schedule.weeklyAmount;
     const expectedFortnightly = expectedWeekly * 2;
+    const expectedTrinightly = expectedWeekly * 3;
+
 
     // Check if amount matches expected payment (±20% tolerance)
     const tolerance = 0.2;
@@ -167,6 +169,12 @@ async function determineMatchType(
     if (isWithinTolerance(amount, expectedFortnightly, tolerance)) {
         return { type: "rent_payment", confidence: 0.9 };
     }
+
+    // Check fortnightly amount
+    if (isWithinTolerance(amount, expectedTrinightly, tolerance)) {
+        return { type: "rent_payment", confidence: 0.85 };
+    }
+
 
     // Smaller amounts might be grocery reimbursements
     if (amount < expectedWeekly * 0.5) {

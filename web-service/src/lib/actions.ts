@@ -5,6 +5,7 @@ import { syncTransactions, triggerManualRefresh, canTriggerManualRefresh, getLas
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { users, transactions, paymentSchedules, systemState } from "@/lib/db/schema";
+import { isSaturday, isFriday, previousSaturday, nextFriday, nextSaturday, previousFriday } from "date-fns";
 import { eq, desc } from "drizzle-orm";
 
 const PAGE_SIZE = 50;
@@ -547,6 +548,9 @@ export async function importSchedulesAction(schedulesJson: string) {
     const allUsers = await db.select().from(users);
     const emailToUserId = new Map(allUsers.map((u) => [u.email, u.id]));
 
+    // Delete all existing schedules before importing
+    await db.delete(paymentSchedules);
+
     let imported = 0;
     const errors: string[] = [];
 
@@ -557,10 +561,20 @@ export async function importSchedulesAction(schedulesJson: string) {
             continue;
         }
 
-        const startDate = new Date(schedule.startDate);
+        let startDate = new Date(schedule.startDate);
         if (isNaN(startDate.getTime())) {
             errors.push(`Invalid start date for ${schedule.flatmateEmail}: ${schedule.startDate}`);
             continue;
+        }
+
+        // Snap start date to nearest Saturday (week start)
+        if (!isSaturday(startDate)) {
+            // Check which Saturday is closer: previous or next
+            const prevSat = previousSaturday(startDate);
+            const nextSat = nextSaturday(startDate);
+            const diffToPrev = Math.abs(startDate.getTime() - prevSat.getTime());
+            const diffToNext = Math.abs(nextSat.getTime() - startDate.getTime());
+            startDate = diffToPrev <= diffToNext ? prevSat : nextSat;
         }
 
         let endDate: Date | null = null;
@@ -569,6 +583,16 @@ export async function importSchedulesAction(schedulesJson: string) {
             if (isNaN(endDate.getTime())) {
                 errors.push(`Invalid end date for ${schedule.flatmateEmail}: ${schedule.endDate}`);
                 continue;
+            }
+
+            // Snap end date to nearest Friday (week end)
+            if (!isFriday(endDate)) {
+                // Check which Friday is closer: previous or next
+                const prevFri = previousFriday(endDate);
+                const nextFri = nextFriday(endDate);
+                const diffToPrev = Math.abs(endDate.getTime() - prevFri.getTime());
+                const diffToNext = Math.abs(nextFri.getTime() - endDate.getTime());
+                endDate = diffToPrev <= diffToNext ? prevFri : nextFri;
             }
         }
 

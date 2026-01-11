@@ -65,7 +65,7 @@ export default async function SchedulePage() {
                         <h3 className="font-medium">How Payment Schedules Work</h3>
                         <p className="text-sm text-slate-400 mt-1">
                             Payment schedules define how much each flatmate should contribute weekly.
-                            Payments are due each <span className="text-emerald-400">Thursday</span>.
+                            Payments are due each <span className="text-emerald-400">Thursday</span> (before Friday rent payout).
                             You can create overlapping schedules to handle rate changes (e.g., summer vs winter rates).
                         </p>
                     </div>

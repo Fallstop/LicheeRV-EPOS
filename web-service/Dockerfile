@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -9,7 +9,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies based on the preferred package manager
-COPY package.json pnpm-lock.yaml* .npmrc* ./
+COPY web-service/package.json web-service/pnpm-lock.yaml* web-service/.npmrc* ./
 RUN pnpm install --frozen-lockfile
 
 # Rebuild better-sqlite3 for the current architecture
@@ -21,7 +21,7 @@ RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY web-service/ .
 
 # Disable Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED=1

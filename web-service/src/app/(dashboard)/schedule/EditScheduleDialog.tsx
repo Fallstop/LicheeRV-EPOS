@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { updateScheduleAction } from "@/lib/actions";
 import { PaymentSchedule } from "@/lib/db/schema";
 import { format } from "date-fns";
+import { WeekDatePicker } from "@/components/WeekDatePicker";
 
 interface EditScheduleDialogProps {
     schedule: PaymentSchedule;
@@ -74,27 +75,21 @@ export function EditScheduleDialog({ schedule, flatmates, onClose }: EditSchedul
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
+                        <WeekDatePicker
+                            name="startDate"
+                            label="Start Date"
+                            weekAlign="start"
+                            required
+                            defaultValue={format(schedule.startDate, "yyyy-MM-dd")}
+                            placeholder="Select Saturday"
+                        />
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">
-                                Start Date *
-                            </label>
-                            <input
-                                type="date"
-                                name="startDate"
-                                required
-                                defaultValue={format(schedule.startDate, "yyyy-MM-dd")}
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">
-                                End Date
-                            </label>
-                            <input
-                                type="date"
+                            <WeekDatePicker
                                 name="endDate"
-                                defaultValue={schedule.endDate ? format(schedule.endDate, "yyyy-MM-dd") : ""}
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                label="End Date"
+                                weekAlign="end"
+                                defaultValue={schedule.endDate ? format(schedule.endDate, "yyyy-MM-dd") : undefined}
+                                placeholder="Select Friday"
                             />
                             <p className="text-xs text-slate-500 mt-1">Leave empty for ongoing</p>
                         </div>

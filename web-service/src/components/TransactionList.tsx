@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { Search, Filter, Download, ChevronDown, ChevronUp, X, RefreshCw, ArrowDownRight, ArrowUpRight, CreditCard } from "lucide-react";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
-import { startOfDay, previousFriday, isFriday } from "date-fns";
+import { startOfDay, isSaturday, previousSaturday } from "date-fns";
 import { TransactionDetailModal } from "./TransactionDetailModal";
 import { isRentPayment } from "@/lib/utils";
 import type { Transaction as TransactionType, User } from "@/lib/db/schema";
@@ -19,28 +19,31 @@ interface TransactionListProps {
 const TIMEZONE = "Pacific/Auckland";
 const PAGE_SIZE = 50;
 
-// Get the Friday midnight boundary for a date in the timezone
-function getFridayBoundary(date: Date): Date {
+// Get the Saturday that starts the week containing this date
+// Week runs Saturday to Friday, so we find the previous/current Saturday
+function getWeekStartSaturday(date: Date): Date {
     const zonedDate = toZonedTime(date, TIMEZONE);
     const startOfDayZoned = startOfDay(zonedDate);
     
-    // If it's Friday, return the start of this Friday
-    if (isFriday(zonedDate)) {
+    // If it's Saturday, return the start of this Saturday
+    if (isSaturday(zonedDate)) {
         return startOfDayZoned;
     }
-    // Otherwise, get the previous Friday
-    return previousFriday(startOfDayZoned);
+    // Otherwise, get the previous Saturday
+    return previousSaturday(startOfDayZoned);
 }
 
-// Check if two dates are on different sides of a Friday midnight
-function crossesFridayBoundary(date1: Date, date2: Date): Date | null {
-    const friday1 = getFridayBoundary(date1);
-    const friday2 = getFridayBoundary(date2);
+// Check if two dates are in different weeks (Saturday-Friday weeks)
+// Returns the Saturday of the newer week if they're in different weeks
+function crossesWeekBoundary(date1: Date, date2: Date): Date | null {
+    const weekStart1 = getWeekStartSaturday(date1);
+    const weekStart2 = getWeekStartSaturday(date2);
     
-    // If they have different Friday boundaries, return the Friday between them
-    if (friday1.getTime() !== friday2.getTime()) {
-        // Return the more recent Friday (the one that comes after date2 but before date1)
-        return friday1.getTime() > friday2.getTime() ? friday1 : friday2;
+    // If they have different week starts, return the Saturday of the newer week
+    // (which appears AFTER the older transactions in the list, acting as header for newer week)
+    if (weekStart1.getTime() !== weekStart2.getTime()) {
+        // Return the more recent Saturday (start of week containing date1)
+        return weekStart1.getTime() > weekStart2.getTime() ? weekStart1 : weekStart2;
     }
     return null;
 }
@@ -374,17 +377,17 @@ export function TransactionList({ initialTransactions, flatmates, hasMore: initi
                             ) : (
                                 filteredTransactions.map((tx, index) => {
                                     const prevTx = index > 0 ? filteredTransactions[index - 1] : null;
-                                    const fridayBoundary = prevTx ? crossesFridayBoundary(prevTx.date, tx.date) : null;
+                                    const weekBoundary = prevTx ? crossesWeekBoundary(prevTx.date, tx.date) : null;
                                     
                                     return (
                                         <>
-                                            {fridayBoundary && (
-                                                <tr key={`friday-${fridayBoundary.getTime()}`} className="pointer-events-none">
+                                            {weekBoundary && (
+                                                <tr key={`week-${weekBoundary.getTime()}`} className="pointer-events-none">
                                                     <td colSpan={6} className="p-0! border-0!">
                                                         <div className="flex items-center gap-3 py-2 px-4">
                                                             <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
                                                             <span className="text-xs font-medium text-amber-400/80 whitespace-nowrap">
-                                                                Week of {formatInTimeZone(fridayBoundary, TIMEZONE, "d MMM")}
+                                                                Week of {formatInTimeZone(weekBoundary, TIMEZONE, "d MMM")}
                                                             </span>
                                                             <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
                                                         </div>
