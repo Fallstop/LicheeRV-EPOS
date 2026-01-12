@@ -301,6 +301,8 @@ export default async function DashboardPage() {
                             })),
                         }))}
                         userName={session?.user?.name?.split(" ")[0]}
+                        scheduleEndDate={userBalance.scheduleEndDate}
+                        futureSchedules={userBalance.futureSchedules}
                     />
                 </div>
             )}

@@ -85,6 +85,12 @@ export interface WeeklyObligation {
     }>;
 }
 
+export interface ScheduleSegment {
+    weeklyAmount: number;
+    startDate: Date;
+    endDate: Date | null;
+}
+
 export interface FlatmateBalance {
     userId: string;
     userName: string | null;
@@ -94,6 +100,8 @@ export interface FlatmateBalance {
     balance: number; // Positive = overpaid (credit), Negative = underpaid (owes)
     weeklyBreakdown: WeeklyObligation[];
     currentWeeklyRate: number | null;
+    scheduleEndDate: Date | null; // When the current schedule ends (null = ongoing)
+    futureSchedules: ScheduleSegment[]; // All schedules from now into the future, ordered by start date
 }
 
 export interface PaymentSummary {
@@ -313,9 +321,46 @@ async function calculateFlatmateBalance(
     // Calculate total paid from rent payments only (no double counting)
     const totalPaid = rentPaymentTransactions.reduce((sum, tx) => sum + tx.amount, 0);
 
-    // Get current weekly rate
+    // Get current weekly rate and schedule end date
     const now = new Date();
     const currentRate = getWeeklyAmount(schedules, now);
+    
+    // Find the current active schedule to get its end date
+    const nowDay = startOfDay(now);
+    const activeSchedules = schedules.filter((s) => {
+        const scheduleStartDay = startOfDay(s.startDate);
+        const scheduleEndDay = s.endDate ? startOfDay(s.endDate) : new Date(2100, 0, 1);
+        return scheduleStartDay <= nowDay && scheduleEndDay >= nowDay;
+    });
+    activeSchedules.sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+    const scheduleEndDate = activeSchedules.length > 0 ? activeSchedules[0].endDate : null;
+
+    // Build future schedules list: current schedule + any future schedules
+    // This helps the autopayment helper show when rates will change
+    const futureSchedules: ScheduleSegment[] = [];
+    
+    // Add current schedule if exists
+    if (activeSchedules.length > 0) {
+        const current = activeSchedules[0];
+        futureSchedules.push({
+            weeklyAmount: current.weeklyAmount,
+            startDate: current.startDate,
+            endDate: current.endDate,
+        });
+    }
+    
+    // Add all schedules that start in the future
+    const upcomingSchedules = schedules
+        .filter((s) => startOfDay(s.startDate) > nowDay)
+        .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+    
+    for (const s of upcomingSchedules) {
+        futureSchedules.push({
+            weeklyAmount: s.weeklyAmount,
+            startDate: s.startDate,
+            endDate: s.endDate,
+        });
+    }
 
     return {
         userId,
@@ -326,6 +371,8 @@ async function calculateFlatmateBalance(
         balance: totalPaid - totalDue,
         weeklyBreakdown,
         currentWeeklyRate: currentRate || null,
+        scheduleEndDate,
+        futureSchedules,
     };
 }
 

@@ -38,7 +38,6 @@ export default async function TransactionsPage() {
             matchedUserId: transactions.matchedUserId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
-            manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
         })
