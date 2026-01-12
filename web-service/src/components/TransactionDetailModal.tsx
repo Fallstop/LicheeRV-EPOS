@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, DollarSign, Tag, User, Building2, FileText, Hash, CreditCard } from "lucide-react";
-import type { Transaction as TransactionType } from "@/lib/db/schema";
+import { X, Calendar, DollarSign, Tag, User, Building2, FileText, Hash, CreditCard, Edit2, Check, Loader2 } from "lucide-react";
+import type { Transaction as TransactionType, User as UserType } from "@/lib/db/schema";
 import { formatInTimeZone } from "date-fns-tz";
 import Image from "next/image";
+import { updateTransactionMatchAction } from "@/lib/actions";
 
 interface RawTransactionData {
     particulars?: string;
@@ -17,9 +19,23 @@ interface RawTransactionData {
 interface TransactionDetailModalProps {
     transaction: TransactionType & { matchedUserName?: string | null };
     onClose: () => void;
+    flatmates?: Pick<UserType, "id" | "name" | "email">[];
+    onUpdate?: () => void;
 }
 
-export function TransactionDetailModal({ transaction, onClose }: TransactionDetailModalProps) {
+const MATCH_TYPES = [
+    { value: "rent_payment", label: "Rent Payment" },
+    { value: "grocery_reimbursement", label: "Grocery Reimbursement" },
+    { value: "expense", label: "Expense" },
+    { value: "other", label: "Other" },
+] as const;
+
+export function TransactionDetailModal({ transaction, onClose, flatmates = [], onUpdate }: TransactionDetailModalProps) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(transaction.matchedUserId);
+    const [selectedMatchType, setSelectedMatchType] = useState<string | null>(transaction.matchType);
+    const [isPending, startTransition] = useTransition();
+
     // Parse raw data
     let rawData: RawTransactionData = {};
     try {
@@ -27,6 +43,25 @@ export function TransactionDetailModal({ transaction, onClose }: TransactionDeta
     } catch {
         // Ignore parse errors
     }
+
+    const handleSaveMatch = () => {
+        startTransition(async () => {
+            const result = await updateTransactionMatchAction(
+                transaction.id,
+                selectedUserId,
+                selectedMatchType as "rent_payment" | "grocery_reimbursement" | "other" | "expense" | null
+            );
+            if (result.success) {
+                setIsEditing(false);
+                onUpdate?.();
+            }
+        });
+    };
+
+    const handleClearMatch = () => {
+        setSelectedUserId(null);
+        setSelectedMatchType(null);
+    };
 
     const dialog = (
         <div 
@@ -129,11 +164,89 @@ export function TransactionDetailModal({ transaction, onClose }: TransactionDeta
                             </div>
                         )}
                         <div>
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-2">
-                                <User className="w-4 h-4" />
-                                Matched To
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                                    <User className="w-4 h-4" />
+                                    Matched To
+                                    {transaction.manualMatch && (
+                                        <span className="badge badge-warning badge-xs">Manual</span>
+                                    )}
+                                </div>
+                                {!isEditing && flatmates.length > 0 && (
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className="p-1 rounded hover:bg-slate-700 transition-colors text-slate-400 hover:text-slate-200"
+                                        title="Edit match"
+                                    >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
-                            {transaction.matchedUserId ? (
+                            {isEditing ? (
+                                <div className="space-y-3">
+                                    <select
+                                        value={selectedUserId || ""}
+                                        onChange={(e) => setSelectedUserId(e.target.value || null)}
+                                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    >
+                                        <option value="">Not matched</option>
+                                        {flatmates.map((user) => (
+                                            <option key={user.id} value={user.id}>
+                                                {user.name || user.email}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {selectedUserId && (
+                                        <select
+                                            value={selectedMatchType || ""}
+                                            onChange={(e) => setSelectedMatchType(e.target.value || null)}
+                                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        >
+                                            <option value="">Select type...</option>
+                                            {MATCH_TYPES.map((type) => (
+                                                <option key={type.value} value={type.value}>
+                                                    {type.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleSaveMatch}
+                                            disabled={isPending}
+                                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium transition-colors"
+                                        >
+                                            {isPending ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <Check className="w-4 h-4" />
+                                                    Save
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedUserId(transaction.matchedUserId);
+                                                setSelectedMatchType(transaction.matchType);
+                                                setIsEditing(false);
+                                            }}
+                                            disabled={isPending}
+                                            className="px-3 py-1.5 rounded-lg hover:bg-slate-700 text-sm font-medium transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                    {selectedUserId && (
+                                        <button
+                                            onClick={handleClearMatch}
+                                            className="w-full px-3 py-1.5 rounded-lg hover:bg-slate-700 text-rose-400 text-sm font-medium transition-colors"
+                                        >
+                                            Clear Match
+                                        </button>
+                                    )}
+                                </div>
+                            ) : transaction.matchedUserId ? (
                                 <div>
                                     <span className="badge badge-success">
                                         {transaction.matchedUserName || "Matched"}

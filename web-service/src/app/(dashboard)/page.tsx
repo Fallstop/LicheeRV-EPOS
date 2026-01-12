@@ -78,6 +78,7 @@ export default async function DashboardPage() {
             matchedUserId: transactions.matchedUserId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
+            manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
         })
@@ -118,8 +119,13 @@ export default async function DashboardPage() {
         ? await calculateUserBalance(currentUser[0].id)
         : null;
 
+    // Get all flatmates for transaction matching override
+    const flatmates = await db
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users);
+
     return (
-        <div className="max-w-7xl mx-auto page-enter">
+        <div className="max-w-full w-7xl mx-auto page-enter">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 animate-fade-in">
                 <div>
@@ -178,6 +184,7 @@ export default async function DashboardPage() {
                         transactions={recentTxs}
                         emptyMessage="No transactions synced yet"
                         emptySubMessage="Click Sync to fetch transactions from Akahu"
+                        flatmates={flatmates}
                     />
                     {recentTxs.length > 0 && (
                         <div className="p-4 border-t border-slate-700/50">

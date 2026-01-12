@@ -78,6 +78,8 @@ export const transactions = sqliteTable("transactions", {
     matchedUserId: text("matched_user_id").references(() => users.id),
     matchType: text("match_type", { enum: ["rent_payment", "grocery_reimbursement", "other", "expense"] }),
     matchConfidence: real("match_confidence"), // 0-1 confidence score
+    // Manual override flag - when true, sync won't overwrite the match
+    manualMatch: integer("manual_match", { mode: "boolean" }).default(false),
     createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 

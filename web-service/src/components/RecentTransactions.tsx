@@ -1,22 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { TransactionDetailModal } from "./TransactionDetailModal";
 import { TransactionRow, type TransactionRowData } from "./TransactionRow";
-import type { Transaction as TransactionType } from "@/lib/db/schema";
+import type { Transaction as TransactionType, User } from "@/lib/db/schema";
 
 interface RecentTransactionsProps {
     transactions: (TransactionType & { matchedUserName?: string | null })[];
     emptyMessage?: string;
     emptySubMessage?: string;
+    flatmates?: Pick<User, "id" | "name" | "email">[];
 }
 
 export function RecentTransactions({ 
     transactions, 
     emptyMessage = "No transactions yet",
-    emptySubMessage = "Sync to fetch transactions"
+    emptySubMessage = "Sync to fetch transactions",
+    flatmates = []
 }: RecentTransactionsProps) {
+    const router = useRouter();
     const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null }) | null>(null);
 
     return (
@@ -61,6 +65,11 @@ export function RecentTransactions({
                 <TransactionDetailModal
                     transaction={selectedTransaction}
                     onClose={() => setSelectedTransaction(null)}
+                    flatmates={flatmates}
+                    onUpdate={() => {
+                        setSelectedTransaction(null);
+                        router.refresh();
+                    }}
                 />
             )}
         </>

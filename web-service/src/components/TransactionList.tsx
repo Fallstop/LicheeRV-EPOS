@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Filter, Download, ChevronDown, ChevronUp, X, RefreshCw, ArrowDownRight, ArrowUpRight, CreditCard } from "lucide-react";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
@@ -13,6 +14,7 @@ import Image from "next/image";
 interface TransactionListProps {
     transactions: (TransactionType & { matchedUserName?: string | null })[];
     flatmates: Pick<User, "id" | "name" | "email">[];
+    analysisStartDate?: Date | null;
 }
 
 const TIMEZONE = "Pacific/Auckland";
@@ -20,7 +22,8 @@ const ROW_HEIGHT = 72;
 
 type ListItem = 
     | { type: "transaction"; tx: TransactionType & { matchedUserName?: string | null }; index: number }
-    | { type: "week-header"; weekStart: Date };
+    | { type: "week-header"; weekStart: Date }
+    | { type: "analysis-boundary"; date: Date };
 
 function getWeekStartSaturday(date: Date): Date {
     const zonedDate = toZonedTime(date, TIMEZONE);
@@ -42,8 +45,23 @@ function crossesWeekBoundary(date1: Date, date2: Date): Date | null {
     return null;
 }
 
-export function TransactionList({ transactions, flatmates }: TransactionListProps) {
+function useIsDesktop() {
+    const [isDesktop, setIsDesktop] = useState(false);
+    
+    useEffect(() => {
+        const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+        checkDesktop();
+        window.addEventListener("resize", checkDesktop);
+        return () => window.removeEventListener("resize", checkDesktop);
+    }, []);
+    
+    return isDesktop;
+}
+
+export function TransactionList({ transactions, flatmates, analysisStartDate }: TransactionListProps) {
+    const router = useRouter();
     const parentRef = useRef<HTMLDivElement>(null);
+    const isDesktop = useIsDesktop();
     const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null }) | null>(null);
     
     // Filters
@@ -97,13 +115,23 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
         });
     }, [transactions, searchQuery, dateFrom, dateTo, selectedFlatmate, amountMin, amountMax, amountType]);
 
-    // Build list items with week headers inserted
+    // Build list items with week headers and analysis boundary inserted
     const listItems = useMemo((): ListItem[] => {
         const items: ListItem[] = [];
+        let analysisLineInserted = false;
         
         for (let i = 0; i < filteredTransactions.length; i++) {
             const tx = filteredTransactions[i];
             const prevTx = i > 0 ? filteredTransactions[i - 1] : null;
+            
+            // Check for analysis start date boundary (transactions are sorted desc)
+            if (analysisStartDate && !analysisLineInserted) {
+                if (prevTx && prevTx.date >= analysisStartDate && tx.date < analysisStartDate) {
+                    items.push({ type: "analysis-boundary", date: analysisStartDate });
+                    analysisLineInserted = true;
+                }
+            }
+            
             const weekBoundary = prevTx ? crossesWeekBoundary(prevTx.date, tx.date) : null;
             
             if (weekBoundary) {
@@ -113,17 +141,18 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
         }
         
         return items;
-    }, [filteredTransactions]);
+    }, [filteredTransactions, analysisStartDate]);
 
-    // Virtual list
+    // Virtual list (only used on desktop)
     const virtualizer = useVirtualizer({
-        count: listItems.length,
+        count: isDesktop ? listItems.length : 0,
         getScrollElement: () => parentRef.current,
         estimateSize: (index) => {
             const item = listItems[index];
-            return item.type === "week-header" ? 40 : ROW_HEIGHT;
+            return item.type === "week-header" || item.type === "analysis-boundary" ? 40 : ROW_HEIGHT;
         },
         overscan: 10,
+        enabled: isDesktop,
     });
 
     // Export to CSV
@@ -172,9 +201,9 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
     }, [filteredTransactions, transactions.length]);
 
     return (
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className="w-full lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 shrink-0">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 lg:shrink-0">
                 <div className="glass rounded-xl p-4 flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-500/20">
                         <ArrowDownRight className="w-5 h-5 text-emerald-400" />
@@ -205,7 +234,7 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
             </div>
 
             {/* Search and Filter Bar */}
-            <div className="mb-6 space-y-4 shrink-0">
+            <div className="mb-6 space-y-4 lg:shrink-0">
                 <div className="flex gap-3">
                     {/* Search */}
                     <div className="flex-1 relative">
@@ -340,22 +369,23 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                 )}
             </div>
 
-            {/* Virtual Scrolling List */}
-            <div className="glass rounded-2xl overflow-hidden flex flex-col flex-1 min-h-0">
-                {/* Header */}
-                <div className="grid grid-cols-[120px_32px_1fr_150px_150px_100px] md:grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 py-3 border-b border-slate-700/50 text-xs font-medium text-slate-400 uppercase tracking-wider shrink-0">
+            {/* Transaction List - Virtual on desktop, full render on mobile */}
+            <div className="glass rounded-2xl overflow-hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
+                {/* Header - Desktop only */}
+                <div className="hidden lg:grid grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 py-3 border-b border-slate-700/50 text-xs font-medium text-slate-400 uppercase tracking-wider lg:shrink-0">
                     <div>Date & Time</div>
                     <div></div>
                     <div>Description</div>
-                    <div className="hidden md:block">Category</div>
+                    <div>Category</div>
                     <div>Match</div>
                     <div className="text-right">Amount</div>
                 </div>
+                {/* Mobile header - no header needed for card-style layout */}
                 
-                {/* Virtual List Container */}
+                {/* List Container */}
                 <div
                     ref={parentRef}
-                    className="flex-1 overflow-auto min-h-0"
+                    className={isDesktop ? "flex-1 overflow-auto min-h-0" : ""}
                 >
                     {filteredTransactions.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-slate-500">
@@ -370,7 +400,8 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                 </button>
                             )}
                         </div>
-                    ) : (
+                    ) : isDesktop ? (
+                        /* Desktop: Virtual scrolling */
                         <div
                             style={{
                                 height: `${virtualizer.getTotalSize()}px`,
@@ -380,6 +411,29 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                         >
                             {virtualizer.getVirtualItems().map((virtualRow) => {
                                 const item = listItems[virtualRow.index];
+                                
+                                if (item.type === "analysis-boundary") {
+                                    return (
+                                        <div
+                                            key="analysis-boundary"
+                                            style={{
+                                                position: "absolute",
+                                                top: 0,
+                                                left: 0,
+                                                width: "100%",
+                                                height: `${virtualRow.size}px`,
+                                                transform: `translateY(${virtualRow.start}px)`,
+                                            }}
+                                            className="flex items-center gap-3 px-4"
+                                        >
+                                            <div className="flex-1 h-0.5 bg-emerald-500" />
+                                            <span className="text-xs font-semibold text-emerald-400 whitespace-nowrap bg-emerald-500/20 px-2 py-0.5 rounded">
+                                                Analysis Start — {formatInTimeZone(item.date, TIMEZONE, "d MMM yyyy")}
+                                            </span>
+                                            <div className="flex-1 h-0.5 bg-emerald-500" />
+                                        </div>
+                                    );
+                                }
                                 
                                 if (item.type === "week-header") {
                                     return (
@@ -416,10 +470,9 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                             height: `${virtualRow.size}px`,
                                             transform: `translateY(${virtualRow.start}px)`,
                                         }}
-                                        className="grid grid-cols-[120px_32px_1fr_150px_150px_100px] md:grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 items-center hover:bg-slate-800/30 cursor-pointer border-b border-slate-700/30"
+                                        className="grid grid-cols-[120px_32px_1fr_240px_150px_100px] gap-2 px-4 items-center hover:bg-slate-800/30 cursor-pointer border-b border-slate-700/30"
                                         onClick={() => setSelectedTransaction(tx)}
                                     >
-                                        {/* Date & Time */}
                                         <div className="text-slate-400">
                                             <div className="text-slate-200 text-sm">
                                                 {formatInTimeZone(tx.date, TIMEZONE, "d MMM yyyy")}
@@ -429,7 +482,6 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                             </div>
                                         </div>
                                         
-                                        {/* Logo */}
                                         <div className="flex items-center justify-center">
                                             {tx.merchantLogo && (
                                                 <Image
@@ -444,7 +496,6 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                             )}
                                         </div>
                                         
-                                        {/* Description */}
                                         <div className="min-w-0">
                                             <div className="font-medium text-slate-200 line-clamp-1 text-sm">{tx.description}</div>
                                             <div className="flex items-center gap-2 flex-wrap">
@@ -460,14 +511,12 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                             </div>
                                         </div>
                                         
-                                        {/* Category */}
-                                        <div className="hidden md:block">
+                                        <div>
                                             {tx.category && (
                                                 <span className="badge badge-neutral text-xs">{tx.category}</span>
                                             )}
                                         </div>
                                         
-                                        {/* Match */}
                                         <div>
                                             {tx.matchedUserId ? (
                                                 <span className={`badge text-xs ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
@@ -478,10 +527,80 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                                             )}
                                         </div>
                                         
-                                        {/* Amount */}
                                         <div className={`text-right font-mono font-medium text-sm ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
                                             {tx.amount > 0 ? "+" : ""}
                                             ${Math.abs(tx.amount).toFixed(2)}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        /* Mobile: Full render with page scrolling - card style layout */
+                        <div className="divide-y divide-slate-700/30 ">
+                            {listItems.map((item) => {
+                                if (item.type === "analysis-boundary") {
+                                    return (
+                                        <div
+                                            key="analysis-boundary"
+                                            className="flex items-center gap-3 px-4 py-2"
+                                        >
+                                            <div className="flex-1 h-0.5 bg-emerald-500" />
+                                            <span className="text-xs font-semibold text-emerald-400 whitespace-nowrap bg-emerald-500/20 px-2 py-0.5 rounded">
+                                                Analysis Start — {formatInTimeZone(item.date, TIMEZONE, "d MMM yyyy")}
+                                            </span>
+                                            <div className="flex-1 h-0.5 bg-emerald-500" />
+                                        </div>
+                                    );
+                                }
+                                
+                                if (item.type === "week-header") {
+                                    return (
+                                        <div
+                                            key={`week-${item.weekStart.getTime()}`}
+                                            className="flex items-center gap-3 px-4 py-2"
+                                        >
+                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
+                                            <span className="text-xs font-medium text-amber-400/80 whitespace-nowrap">
+                                                Week of {formatInTimeZone(item.weekStart, TIMEZONE, "d MMM")}
+                                            </span>
+                                            <div className="flex-1 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent" />
+                                        </div>
+                                    );
+                                }
+                                
+                                const tx = item.tx;
+                                return (
+                                    <div
+                                        key={tx.id}
+                                        className="px-4 py-3 hover:bg-slate-800/30 cursor-pointer active:bg-slate-800/50"
+                                        onClick={() => setSelectedTransaction(tx)}
+                                    >
+                                        {/* Top row: Date/Time and Amount */}
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs text-slate-500">
+                                                {formatInTimeZone(tx.date, TIMEZONE, "d MMM · h:mm a")}
+                                            </span>
+                                            <span className={`font-mono font-semibold ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
+                                                {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Description */}
+                                        <div className="font-medium text-slate-200 truncate">
+                                            {tx.description}
+                                        </div>
+                                        
+                                        {/* Bottom row: Merchant and Match badge */}
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {tx.merchant && (
+                                                <span className="text-xs text-slate-500 truncate">{tx.merchant}</span>
+                                            )}
+                                            {tx.matchedUserId && (
+                                                <span className={`badge text-xs shrink-0 ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
+                                                    {tx.matchedUserName || "Matched"}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -492,7 +611,7 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
             </div>
 
             {filteredTransactions.length > 0 && (
-                <p className="text-center text-slate-500 text-sm mt-6 shrink-0">
+                <p className="text-center text-slate-500 text-sm mt-6">
                     {stats.count.toLocaleString()} transactions
                 </p>
             )}
@@ -502,6 +621,11 @@ export function TransactionList({ transactions, flatmates }: TransactionListProp
                 <TransactionDetailModal
                     transaction={selectedTransaction}
                     onClose={() => setSelectedTransaction(null)}
+                    flatmates={flatmates}
+                    onUpdate={() => {
+                        setSelectedTransaction(null);
+                        router.refresh();
+                    }}
                 />
             )}
         </div>

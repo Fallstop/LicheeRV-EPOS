@@ -36,6 +36,7 @@ export async function getAllTransactionsAction() {
             matchedUserId: transactions.matchedUserId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
+            manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
         })
@@ -68,6 +69,7 @@ export async function loadMoreTransactionsAction(offset: number) {
             matchedUserId: transactions.matchedUserId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
+            manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
         })
@@ -345,6 +347,48 @@ export async function rematchTransactionsAction() {
     } catch (error) {
         console.error("Error rematching transactions:", error);
         return { error: "Failed to rematch transactions" };
+    }
+}
+
+export async function updateTransactionMatchAction(
+    transactionId: string,
+    matchedUserId: string | null,
+    matchType: "rent_payment" | "grocery_reimbursement" | "other" | "expense" | null
+) {
+    const session = await auth();
+    if (!session?.user) {
+        return { error: "Unauthorized" };
+    }
+
+    try {
+        // Verify transaction exists
+        const existing = await db
+            .select()
+            .from(transactions)
+            .where(eq(transactions.id, transactionId))
+            .limit(1);
+
+        if (existing.length === 0) {
+            return { error: "Transaction not found" };
+        }
+
+        // Update the transaction with manual override
+        await db
+            .update(transactions)
+            .set({
+                matchedUserId,
+                matchType,
+                matchConfidence: matchedUserId ? 1.0 : null,
+                manualMatch: matchedUserId !== null,
+            })
+            .where(eq(transactions.id, transactionId));
+
+        revalidatePath("/transactions");
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating transaction match:", error);
+        return { error: "Failed to update transaction match" };
     }
 }
 

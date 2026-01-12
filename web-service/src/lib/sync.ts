@@ -112,13 +112,28 @@ export async function syncTransactions(): Promise<SyncResult> {
                     .limit(1);
 
                 if (existing.length > 0) {
-                    // Update existing transaction (preserve matching info)
-                    await db
-                        .update(transactions)
-                        .set({
-                            ...mapped,
-                        })
-                        .where(eq(transactions.akahuId, tx._id));
+                    // Update existing transaction (preserve matching info if manually set)
+                    // Don't overwrite manual matches
+                    if (existing[0].manualMatch) {
+                        // Preserve all match-related fields for manual matches
+                        await db
+                            .update(transactions)
+                            .set({
+                                ...mapped,
+                                matchedUserId: existing[0].matchedUserId,
+                                matchType: existing[0].matchType,
+                                matchConfidence: existing[0].matchConfidence,
+                                manualMatch: existing[0].manualMatch,
+                            })
+                            .where(eq(transactions.akahuId, tx._id));
+                    } else {
+                        await db
+                            .update(transactions)
+                            .set({
+                                ...mapped,
+                            })
+                            .where(eq(transactions.akahuId, tx._id));
+                    }
                     result.updated++;
                 } else {
                     // Insert new transaction

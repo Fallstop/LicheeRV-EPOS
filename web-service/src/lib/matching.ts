@@ -187,12 +187,19 @@ async function determineMatchType(
 import { isWithinTolerance } from "./utils";
 
 /**
- * Re-match all transactions that don't have a match
+ * Re-match all transactions that don't have a manual match
  */
 export async function rematchAllTransactions(): Promise<{ matched: number; total: number }> {
+    // Only rematch transactions that aren't manually matched
     const unmatchedTxs = await db
         .select()
-        .from(transactions);
+        .from(transactions)
+        .where(
+            or(
+                isNull(transactions.manualMatch),
+                eq(transactions.manualMatch, false)
+            )
+        );
 
     let matched = 0;
 
@@ -223,7 +230,7 @@ export async function rematchAllTransactions(): Promise<{ matched: number; total
 }
 
 /**
- * Clear all transaction matches (useful when bank account patterns change)
+ * Clear all automatic transaction matches (preserves manual overrides)
  */
 export async function clearAllMatches(): Promise<number> {
     const result = await db
@@ -233,7 +240,15 @@ export async function clearAllMatches(): Promise<number> {
             matchType: null,
             matchConfidence: null,
         })
-        .where(isNotNull(transactions.matchedUserId));
+        .where(
+            and(
+                isNotNull(transactions.matchedUserId),
+                or(
+                    isNull(transactions.manualMatch),
+                    eq(transactions.manualMatch, false)
+                )
+            )
+        );
 
     return result.changes;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `manual_match` integer DEFAULT false;

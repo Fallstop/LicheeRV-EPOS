@@ -39,7 +39,7 @@ export default async function BalancesPage() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-full w-7xl mx-auto">
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-2xl font-bold">Payment Balances</h1>

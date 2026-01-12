@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { transactions, users } from "@/lib/db/schema";
+import { transactions, users, systemState } from "@/lib/db/schema";
 import { desc, eq, ne } from "drizzle-orm";
 import { SyncButton } from "@/components/SyncButton";
 import { TransactionList } from "@/components/TransactionList";
@@ -38,6 +38,7 @@ export default async function TransactionsPage() {
             matchedUserId: transactions.matchedUserId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
+            manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
         })
@@ -45,9 +46,19 @@ export default async function TransactionsPage() {
         .leftJoin(users, eq(transactions.matchedUserId, users.id))
         .orderBy(desc(transactions.date));
 
+    // Get analysis start date
+    const analysisStartSetting = await db
+        .select()
+        .from(systemState)
+        .where(eq(systemState.key, "analysis_start_date"))
+        .limit(1);
+    const analysisStartDate = analysisStartSetting[0]?.value 
+        ? new Date(analysisStartSetting[0].value) 
+        : null;
+
     return (
-        <div className="w-7xl mx-auto flex flex-col h-full min-h-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 shrink-0">
+        <div className="max-w-full w-7xl  mx-auto lg:flex lg:flex-col lg:flex-1 lg:min-h-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 lg:shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold">Transactions</h1>
                     <p className="text-slate-400 mt-1">
@@ -67,6 +78,7 @@ export default async function TransactionsPage() {
             <TransactionList
                 transactions={txsWithUsers}
                 flatmates={flatmates}
+                analysisStartDate={analysisStartDate}
             />
         </div>
     );
