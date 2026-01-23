@@ -142,13 +142,93 @@ function applyMissingSchemaChanges() {
 
     // If landlords table exists (either we just created it or it existed before),
     // mark migration 0004 as applied so drizzle doesn't try to run it again
-    if (landlordsExists || true) {
-        const landlordsNowExists = sqlite.prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='landlords'"
-        ).get();
-        if (landlordsNowExists) {
-            markMigrationAsApplied("0004_thin_ultimatum");
-        }
+    const landlordsNowExists = sqlite.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='landlords'"
+    ).get();
+    if (landlordsNowExists) {
+        markMigrationAsApplied("0004_thin_ultimatum");
+    }
+
+    // Check and create expense_categories table if missing (from migration 0005)
+    const expenseCategoriesExists = sqlite.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='expense_categories'"
+    ).get();
+
+    if (!expenseCategoriesExists) {
+        console.log("Creating missing 'expense_categories' table...");
+        sqlite.exec(`
+            CREATE TABLE expense_categories (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                icon TEXT NOT NULL,
+                color TEXT NOT NULL,
+                track_allotments INTEGER DEFAULT 0,
+                sort_order INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at INTEGER
+            );
+            CREATE UNIQUE INDEX expense_categories_name_unique ON expense_categories (name);
+            CREATE UNIQUE INDEX expense_categories_slug_unique ON expense_categories (slug);
+        `);
+    }
+
+    // Check and create expense_matching_rules table if missing
+    const expenseMatchingRulesExists = sqlite.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='expense_matching_rules'"
+    ).get();
+
+    if (!expenseMatchingRulesExists) {
+        console.log("Creating missing 'expense_matching_rules' table...");
+        sqlite.exec(`
+            CREATE TABLE expense_matching_rules (
+                id TEXT PRIMARY KEY NOT NULL,
+                category_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                priority INTEGER DEFAULT 100 NOT NULL,
+                merchant_pattern TEXT,
+                description_pattern TEXT,
+                account_pattern TEXT,
+                akahu_category TEXT,
+                match_mode TEXT DEFAULT 'any',
+                is_regex INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at INTEGER,
+                FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+        `);
+    }
+
+    // Check and create expense_transactions table if missing
+    const expenseTransactionsExists = sqlite.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='expense_transactions'"
+    ).get();
+
+    if (!expenseTransactionsExists) {
+        console.log("Creating missing 'expense_transactions' table...");
+        sqlite.exec(`
+            CREATE TABLE expense_transactions (
+                id TEXT PRIMARY KEY NOT NULL,
+                transaction_id TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                matched_rule_id TEXT,
+                match_confidence REAL,
+                manual_match INTEGER DEFAULT 0,
+                created_at INTEGER,
+                FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY (matched_rule_id) REFERENCES expense_matching_rules(id) ON UPDATE NO ACTION ON DELETE NO ACTION
+            );
+            CREATE UNIQUE INDEX expense_transactions_transaction_id_unique ON expense_transactions (transaction_id);
+        `);
+    }
+
+    // Mark migration 0005 as applied if all expense tables exist
+    const allExpenseTablesExist = sqlite.prepare(
+        "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name IN ('expense_categories', 'expense_matching_rules', 'expense_transactions')"
+    ).get();
+    if (allExpenseTablesExist.count === 3) {
+        markMigrationAsApplied("0005_elite_gideon");
     }
 }
 
