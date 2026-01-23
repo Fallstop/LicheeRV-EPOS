@@ -2,48 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-    ChevronRight,
-    Edit2,
-    LucideIcon,
-} from "lucide-react";
+import { Tag, Edit2 } from "lucide-react";
 import { formatInTimeZone } from "date-fns-tz";
 import type { ExpenseTransactionWithDetails } from "@/lib/expense-calculations";
 import type { ExpenseCategory } from "@/lib/db/schema";
 import { ManualMatchDialog } from "./ManualMatchDialog";
+import { getExpenseIcon, getColorClasses } from "@/lib/expense-ui";
 
 const TIMEZONE = "Pacific/Auckland";
-
-// Map icon names to components
-const iconMap: Record<string, LucideIcon> = {
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-};
-
-// Map color names to Tailwind classes
-const colorMap: Record<string, { bg: string; text: string }> = {
-    amber: { bg: "bg-amber-500/20", text: "text-amber-400" },
-    emerald: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
-    blue: { bg: "bg-blue-500/20", text: "text-blue-400" },
-    purple: { bg: "bg-purple-500/20", text: "text-purple-400" },
-    rose: { bg: "bg-rose-500/20", text: "text-rose-400" },
-    cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400" },
-    slate: { bg: "bg-slate-500/20", text: "text-slate-400" },
-};
 
 interface ExpenseTransactionListProps {
     transactions: ExpenseTransactionWithDetails[];
@@ -74,8 +40,8 @@ export function ExpenseTransactionList({
         <>
             <div className="divide-y divide-slate-700/30">
                 {transactions.map(({ transaction, expenseTransaction, category }) => {
-                    const IconComponent = iconMap[category.icon] || Tag;
-                    const colors = colorMap[category.color] || colorMap.slate;
+                    const IconComponent = getExpenseIcon(category.icon);
+                    const colors = getColorClasses(category.color);
 
                     return (
                         <div

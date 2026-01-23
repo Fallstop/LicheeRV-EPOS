@@ -12,21 +12,7 @@ import {
 } from "recharts";
 import type { WeeklyExpenseData, WeeklyExpenseDataAllCategories } from "@/lib/expense-calculations";
 import type { ExpenseCategory } from "@/lib/db/schema";
-
-// Map color names to actual hex colors for the chart
-const colorMap: Record<string, string> = {
-    amber: "#f59e0b",
-    emerald: "#10b981",
-    blue: "#3b82f6",
-    purple: "#8b5cf6",
-    rose: "#f43f5e",
-    cyan: "#06b6d4",
-    slate: "#64748b",
-    orange: "#f97316",
-    teal: "#14b8a6",
-    indigo: "#6366f1",
-    pink: "#ec4899",
-};
+import { getColorHex } from "@/lib/expense-ui";
 
 interface ExpenseChartProps {
     weeklyDataAllCategories?: WeeklyExpenseDataAllCategories[];
@@ -40,7 +26,7 @@ export function ExpenseChart({ weeklyDataAllCategories, weeklyData, selectedCate
         return (
             <WeeklyBarChart
                 data={weeklyData}
-                color={colorMap[selectedCategory.color] || colorMap.slate}
+                color={getColorHex(selectedCategory.color)}
                 categoryName={selectedCategory.name}
             />
         );
@@ -148,7 +134,7 @@ function WeeklyStackedBarChart({ data }: { data: WeeklyExpenseDataAllCategories[
     const categories = data[0]?.categories.map(c => ({
         id: c.categoryId,
         name: c.categoryName,
-        color: colorMap[c.categoryColor] || colorMap.slate,
+        color: getColorHex(c.categoryColor),
     })) || [];
 
     // Transform data for recharts

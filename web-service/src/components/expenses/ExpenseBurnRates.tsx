@@ -3,21 +3,7 @@
 import { TrendingUp, Clock } from "lucide-react";
 import type { CategoryBurnRate } from "@/lib/expense-calculations";
 import { formatDistanceToNow } from "date-fns";
-
-// Map color names to Tailwind classes
-const colorClasses: Record<string, { bg: string; text: string }> = {
-    amber: { bg: "bg-amber-500/20", text: "text-amber-400" },
-    emerald: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
-    blue: { bg: "bg-blue-500/20", text: "text-blue-400" },
-    purple: { bg: "bg-purple-500/20", text: "text-purple-400" },
-    rose: { bg: "bg-rose-500/20", text: "text-rose-400" },
-    cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400" },
-    slate: { bg: "bg-slate-500/20", text: "text-slate-400" },
-    orange: { bg: "bg-orange-500/20", text: "text-orange-400" },
-    teal: { bg: "bg-teal-500/20", text: "text-teal-400" },
-    indigo: { bg: "bg-indigo-500/20", text: "text-indigo-400" },
-    pink: { bg: "bg-pink-500/20", text: "text-pink-400" },
-};
+import { getColorClasses } from "@/lib/expense-ui";
 
 interface ExpenseBurnRatesProps {
     burnRates: CategoryBurnRate[];
@@ -50,7 +36,7 @@ export function ExpenseBurnRates({ burnRates }: ExpenseBurnRatesProps) {
                 {/* Per Category */}
                 <div className="space-y-4">
                     {burnRates.map((br) => {
-                        const colors = colorClasses[br.category.color] || colorClasses.slate;
+                        const colors = getColorClasses(br.category.color);
 
                         return (
                             <div key={br.category.id} className="p-4 rounded-xl bg-slate-800/50">

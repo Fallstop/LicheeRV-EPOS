@@ -1,69 +1,7 @@
 import Link from "next/link";
-import {
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-    TrendingUp,
-    TrendingDown,
-    LucideIcon,
-} from "lucide-react";
+import { Tag, TrendingUp, TrendingDown } from "lucide-react";
 import type { ExpenseCategory } from "@/lib/db/schema";
-
-// Map icon names to components
-const iconMap: Record<string, LucideIcon> = {
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-};
-
-// Map color names to Tailwind classes
-const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-    amber: {
-        bg: "bg-amber-500/20",
-        text: "text-amber-400",
-        border: "border-amber-500/30",
-    },
-    emerald: {
-        bg: "bg-emerald-500/20",
-        text: "text-emerald-400",
-        border: "border-emerald-500/30",
-    },
-    blue: {
-        bg: "bg-blue-500/20",
-        text: "text-blue-400",
-        border: "border-blue-500/30",
-    },
-    purple: {
-        bg: "bg-purple-500/20",
-        text: "text-purple-400",
-        border: "border-purple-500/30",
-    },
-    rose: {
-        bg: "bg-rose-500/20",
-        text: "text-rose-400",
-        border: "border-rose-500/30",
-    },
-    cyan: {
-        bg: "bg-cyan-500/20",
-        text: "text-cyan-400",
-        border: "border-cyan-500/30",
-    },
-    slate: {
-        bg: "bg-slate-500/20",
-        text: "text-slate-400",
-        border: "border-slate-500/30",
-    },
-};
+import { getExpenseIcon, getColorClasses } from "@/lib/expense-ui";
 
 interface ExpenseCategoryCardProps {
     category: ExpenseCategory;
@@ -84,8 +22,8 @@ export function ExpenseCategoryCard({
     href,
     subtitle,
 }: ExpenseCategoryCardProps) {
-    const IconComponent = iconMap[category.icon] || Tag;
-    const colors = colorMap[category.color] || colorMap.slate;
+    const IconComponent = getExpenseIcon(category.icon);
+    const colors = getColorClasses(category.color);
 
     const content = (
         <>

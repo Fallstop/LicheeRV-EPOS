@@ -1,49 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-    X,
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-    Check,
-    Trash2,
-    LucideIcon,
-    Loader2,
-} from "lucide-react";
+import { X, Check, Trash2, Loader2 } from "lucide-react";
 import { formatInTimeZone } from "date-fns-tz";
 import type { Transaction, ExpenseCategory } from "@/lib/db/schema";
 import { manuallyMatchExpenseAction } from "@/lib/expense-actions";
+import { getExpenseIcon, getColorClasses } from "@/lib/expense-ui";
 
 const TIMEZONE = "Pacific/Auckland";
-
-// Map icon names to components
-const iconMap: Record<string, LucideIcon> = {
-    Zap,
-    ShoppingCart,
-    Fuel,
-    Wifi,
-    Car,
-    Home,
-    UtensilsCrossed,
-    Tag,
-};
-
-// Map color names to Tailwind classes
-const colorMap: Record<string, { bg: string; text: string; ring: string }> = {
-    amber: { bg: "bg-amber-500/20", text: "text-amber-400", ring: "ring-amber-500/50" },
-    emerald: { bg: "bg-emerald-500/20", text: "text-emerald-400", ring: "ring-emerald-500/50" },
-    blue: { bg: "bg-blue-500/20", text: "text-blue-400", ring: "ring-blue-500/50" },
-    purple: { bg: "bg-purple-500/20", text: "text-purple-400", ring: "ring-purple-500/50" },
-    rose: { bg: "bg-rose-500/20", text: "text-rose-400", ring: "ring-rose-500/50" },
-    cyan: { bg: "bg-cyan-500/20", text: "text-cyan-400", ring: "ring-cyan-500/50" },
-    slate: { bg: "bg-slate-500/20", text: "text-slate-400", ring: "ring-slate-500/50" },
-};
 
 interface ManualMatchDialogProps {
     transaction: Transaction;
@@ -130,8 +94,8 @@ export function ManualMatchDialog({
                     <p className="text-sm text-slate-400 mb-3">Select a category:</p>
                     <div className="space-y-2">
                         {categories.map((category) => {
-                            const IconComponent = iconMap[category.icon] || Tag;
-                            const colors = colorMap[category.color] || colorMap.slate;
+                            const IconComponent = getExpenseIcon(category.icon);
+                            const colors = getColorClasses(category.color);
                             const isSelected = selectedCategoryId === category.id;
 
                             return (
