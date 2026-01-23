@@ -1,13 +1,14 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { transactions, users } from "@/lib/db/schema";
+import { transactions, users, landlords } from "@/lib/db/schema";
 import { desc, sql, eq } from "drizzle-orm";
-import { DollarSign, TrendingUp, TrendingDown, Users, ArrowRight, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Users, ArrowRight, CheckCircle2, AlertCircle, Clock, Building2 } from "lucide-react";
 import { SyncButton } from "@/components/SyncButton";
 import { RecentTransactions } from "@/components/RecentTransactions";
 import { AutopaymentHelper } from "@/components/AutopaymentHelper";
 import { getLastSyncTime, canTriggerManualRefresh } from "@/lib/sync";
-import { getCurrentWeekSummary, calculateUserBalance } from "@/lib/calculations";
+import { getCurrentWeekSummary, calculateUserBalance, getLandlordPaymentSummary } from "@/lib/calculations";
+import { formatMoney } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
     const lastSyncTime = await getLastSyncTime();
     const { canRefresh, nextRefreshAt } = await canTriggerManualRefresh();
 
-    // Fetch recent transactions with matched user names
+    // Fetch recent transactions with matched user and landlord names
     const recentTxs = await db
         .select({
             id: transactions.id,
@@ -76,14 +77,17 @@ export default async function DashboardPage() {
             cardSuffix: transactions.cardSuffix,
             otherAccount: transactions.otherAccount,
             matchedUserId: transactions.matchedUserId,
+            matchedLandlordId: transactions.matchedLandlordId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
             manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
+            matchedLandlordName: landlords.name,
         })
         .from(transactions)
         .leftJoin(users, eq(transactions.matchedUserId, users.id))
+        .leftJoin(landlords, eq(transactions.matchedLandlordId, landlords.id))
         .orderBy(desc(transactions.date))
         .limit(5);
 
@@ -107,6 +111,9 @@ export default async function DashboardPage() {
 
     // Get current week payment status
     const weekSummary = await getCurrentWeekSummary();
+
+    // Get landlord payment summary
+    const landlordSummary = await getLandlordPaymentSummary();
 
     // Get current user's balance if they have a matching entry
     const currentUser = await db
@@ -145,22 +152,22 @@ export default async function DashboardPage() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${landlordSummary.totalPaid > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-4 mb-8`}>
                 <div className="animate-fade-in-up stagger-1"><StatCard
                     title="Total Money In"
-                    value={`$${totalIn.toFixed(2)}`}
+                    value={`$${formatMoney(totalIn)}`}
                     subtitle={`${transactionCount} transactions`}
                     icon={<DollarSign className="w-5 h-5 text-teal-400" />}
                 /></div>
                 <div className="animate-fade-in-up stagger-2"><StatCard
                     title="Total Money Out"
-                    value={`$${totalOut.toFixed(2)}`}
+                    value={`$${formatMoney(totalOut)}`}
                     subtitle="All time"
                     icon={<TrendingDown className="w-5 h-5 text-rose-400" />}
                 /></div>
                 <div className="animate-fade-in-up stagger-3"><StatCard
                     title="Net Balance"
-                    value={`$${(totalIn - totalOut).toFixed(2)}`}
+                    value={`$${formatMoney(totalIn - totalOut)}`}
                     subtitle="In - Out"
                     icon={<TrendingUp className="w-5 h-5 text-emerald-400" />}
                 /></div>
@@ -170,6 +177,14 @@ export default async function DashboardPage() {
                     subtitle="Configured"
                     icon={<Users className="w-5 h-5 text-amber-400" />}
                 /></div>
+                {landlordSummary.totalPaid > 0 && (
+                    <div className="animate-fade-in-up" style={{ animationDelay: '0.2s' }}><StatCard
+                        title="Landlord Expenses"
+                        value={`$${formatMoney(landlordSummary.totalPaid)}`}
+                        subtitle="Rent paid out"
+                        icon={<Building2 className="w-5 h-5 text-orange-400" />}
+                    /></div>
+                )}
             </div>
 
             {/* Main Content Grid */}

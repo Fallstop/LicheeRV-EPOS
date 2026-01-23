@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { calculateAllBalances } from "@/lib/calculations";
 import { AdminBalancesView } from "./AdminBalancesView";
 import { DollarSign, TrendingUp, TrendingDown, Users } from "lucide-react";
+import { formatMoney } from "@/lib/utils";
 
 export default async function BalancesPage() {
     const session = await auth();
@@ -57,7 +58,7 @@ export default async function BalancesPage() {
                         </div>
                         <div>
                             <p className="text-sm text-slate-400">Total Due</p>
-                            <p className="text-xl font-bold">${summary.totalDue.toFixed(2)}</p>
+                            <p className="text-xl font-bold">${formatMoney(summary.totalDue)}</p>
                         </div>
                     </div>
                 </div>
@@ -68,7 +69,7 @@ export default async function BalancesPage() {
                         </div>
                         <div>
                             <p className="text-sm text-slate-400">Total Paid</p>
-                            <p className="text-xl font-bold text-emerald-400">${summary.totalPaid.toFixed(2)}</p>
+                            <p className="text-xl font-bold text-emerald-400">${formatMoney(summary.totalPaid)}</p>
                         </div>
                     </div>
                 </div>
@@ -84,7 +85,7 @@ export default async function BalancesPage() {
                         <div>
                             <p className="text-sm text-slate-400">Net Balance</p>
                             <p className={`text-xl font-bold ${summary.totalBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                                {summary.totalBalance >= 0 ? "+" : ""}${summary.totalBalance.toFixed(2)}
+                                {summary.totalBalance >= 0 ? "+" : "-"}${formatMoney(summary.totalBalance)}
                             </p>
                         </div>
                     </div>

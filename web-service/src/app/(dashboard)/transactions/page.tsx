@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { transactions, users, systemState } from "@/lib/db/schema";
-import { desc, eq, ne } from "drizzle-orm";
+import { transactions, users, systemState, landlords } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
 import { SyncButton } from "@/components/SyncButton";
 import { TransactionList } from "@/components/TransactionList";
 import { getLastSyncTime, canTriggerManualRefresh } from "@/lib/sync";
@@ -15,13 +15,17 @@ export default async function TransactionsPage() {
     const lastSyncTime = await getLastSyncTime();
     const { canRefresh, nextRefreshAt } = await canTriggerManualRefresh();
 
-    // Get all flatmates for filtering
+    // Get all users for filtering (including admin)
     const flatmates = await db
         .select({ id: users.id, name: users.name, email: users.email })
-        .from(users)
-        .where(ne(users.role, "admin"));
+        .from(users);
 
-    // Fetch ALL transactions with matched user names
+    // Get all landlords for filtering
+    const allLandlords = await db
+        .select({ id: landlords.id, name: landlords.name })
+        .from(landlords);
+
+    // Fetch ALL transactions with matched user and landlord names
     const txsWithUsers = await db
         .select({
             id: transactions.id,
@@ -36,14 +40,17 @@ export default async function TransactionsPage() {
             cardSuffix: transactions.cardSuffix,
             otherAccount: transactions.otherAccount,
             matchedUserId: transactions.matchedUserId,
+            matchedLandlordId: transactions.matchedLandlordId,
             matchType: transactions.matchType,
             matchConfidence: transactions.matchConfidence,
             manualMatch: transactions.manualMatch,
             createdAt: transactions.createdAt,
             matchedUserName: users.name,
+            matchedLandlordName: landlords.name,
         })
         .from(transactions)
         .leftJoin(users, eq(transactions.matchedUserId, users.id))
+        .leftJoin(landlords, eq(transactions.matchedLandlordId, landlords.id))
         .orderBy(desc(transactions.date));
 
     // Get analysis start date
@@ -78,6 +85,7 @@ export default async function TransactionsPage() {
             <TransactionList
                 transactions={txsWithUsers}
                 flatmates={flatmates}
+                landlords={allLandlords}
                 analysisStartDate={analysisStartDate}
             />
         </div>

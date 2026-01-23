@@ -4,7 +4,7 @@ import { signOut as nextAuthSignOut, auth } from "@/lib/auth";
 import { syncTransactions, triggerManualRefresh, canTriggerManualRefresh, getLastSyncTime } from "@/lib/sync";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { users, transactions, paymentSchedules, systemState } from "@/lib/db/schema";
+import { users, transactions, paymentSchedules, systemState, landlords } from "@/lib/db/schema";
 import { isSaturday, isFriday, previousSaturday, nextFriday, nextSaturday, previousFriday } from "date-fns";
 import { eq, desc } from "drizzle-orm";
 
@@ -763,4 +763,143 @@ export async function setAnalysisStartDateAction(formData: FormData) {
     revalidatePath("/balances");
     revalidatePath("/");
     return { success: true };
+}
+
+// ============================================
+// Landlord Management Actions
+// ============================================
+
+export async function addLandlordAction(formData: FormData) {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "admin") {
+        return { error: "Unauthorized - admin access required" };
+    }
+
+    const name = formData.get("name")?.toString().trim();
+    const bankAccountPattern = formData.get("bankAccountPattern")?.toString().trim() || null;
+    const matchingName = formData.get("matchingName")?.toString().trim() || null;
+
+    if (!name) {
+        return { error: "Landlord name is required" };
+    }
+
+    if (!bankAccountPattern && !matchingName) {
+        return { error: "At least one matching pattern (bank account or name) is required" };
+    }
+
+    try {
+        await db.insert(landlords).values({
+            name,
+            bankAccountPattern,
+            matchingName,
+        });
+
+        revalidatePath("/settings");
+        revalidatePath("/transactions");
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Error adding landlord:", error);
+        return { error: "Failed to add landlord" };
+    }
+}
+
+export async function updateLandlordAction(formData: FormData) {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "admin") {
+        return { error: "Unauthorized - admin access required" };
+    }
+
+    const id = formData.get("id")?.toString();
+    const name = formData.get("name")?.toString().trim();
+    const bankAccountPattern = formData.get("bankAccountPattern")?.toString().trim() || null;
+    const matchingName = formData.get("matchingName")?.toString().trim() || null;
+
+    if (!id) {
+        return { error: "Landlord ID is required" };
+    }
+
+    if (!name) {
+        return { error: "Landlord name is required" };
+    }
+
+    if (!bankAccountPattern && !matchingName) {
+        return { error: "At least one matching pattern (bank account or name) is required" };
+    }
+
+    // Check if landlord exists
+    const existingLandlord = await db
+        .select()
+        .from(landlords)
+        .where(eq(landlords.id, id))
+        .limit(1);
+
+    if (existingLandlord.length === 0) {
+        return { error: "Landlord not found" };
+    }
+
+    try {
+        await db
+            .update(landlords)
+            .set({
+                name,
+                bankAccountPattern,
+                matchingName,
+                updatedAt: new Date(),
+            })
+            .where(eq(landlords.id, id));
+
+        revalidatePath("/settings");
+        revalidatePath("/transactions");
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating landlord:", error);
+        return { error: "Failed to update landlord" };
+    }
+}
+
+export async function deleteLandlordAction(id: string) {
+    const session = await auth();
+    if (!session?.user || session.user.role !== "admin") {
+        return { error: "Unauthorized - admin access required" };
+    }
+
+    if (!id) {
+        return { error: "Landlord ID is required" };
+    }
+
+    // Check if landlord exists
+    const existingLandlord = await db
+        .select()
+        .from(landlords)
+        .where(eq(landlords.id, id))
+        .limit(1);
+
+    if (existingLandlord.length === 0) {
+        return { error: "Landlord not found" };
+    }
+
+    try {
+        // Clear landlord references from transactions
+        await db
+            .update(transactions)
+            .set({
+                matchedLandlordId: null,
+                matchType: null,
+                matchConfidence: null,
+            })
+            .where(eq(transactions.matchedLandlordId, id));
+
+        // Delete the landlord
+        await db.delete(landlords).where(eq(landlords.id, id));
+
+        revalidatePath("/settings");
+        revalidatePath("/transactions");
+        revalidatePath("/");
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting landlord:", error);
+        return { error: "Failed to delete landlord" };
+    }
 }

@@ -4,9 +4,20 @@
  */
 
 /**
+ * Format a number as currency with commas and 2 decimal places.
+ * Example: 35845 -> "35,845.00"
+ */
+export function formatMoney(amount: number): string {
+    return Math.abs(amount).toLocaleString("en-NZ", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+/**
  * Check if a transaction counts as a rent payment based on the stored match type.
  * A transaction is considered a rent payment if matchType is explicitly "rent_payment".
- * 
+ *
  * This is the canonical check used throughout the app.
  */
 export function isRentPayment(matchType: string | null | undefined): boolean {

@@ -2,7 +2,7 @@ import { akahu, getUserToken, getAccountId } from "./akahu";
 import { db } from "./db";
 import { transactions, systemState } from "./db/schema";
 import { eq, sql } from "drizzle-orm";
-import { matchTransaction } from "./matching";
+import { matchTransaction, matchLandlordTransaction } from "./matching";
 import type { Transaction as AkahuTransaction, EnrichedTransaction } from "akahu";
 
 const SYNC_STATE_KEY = "last_sync_cursor";
@@ -159,6 +159,25 @@ export async function syncTransactions(): Promise<SyncResult> {
                                 matchConfidence: match.confidence,
                             })
                             .where(eq(transactions.id, inserted.id));
+                    } else {
+                        // If no flatmate match, try to match to a landlord (for outgoing payments)
+                        const landlordMatch = await matchLandlordTransaction(
+                            mapped.amount,
+                            mapped.description,
+                            mapped.rawData,
+                            mapped.cardSuffix
+                        );
+
+                        if (landlordMatch) {
+                            await db
+                                .update(transactions)
+                                .set({
+                                    matchedLandlordId: landlordMatch.landlordId,
+                                    matchType: landlordMatch.matchType,
+                                    matchConfidence: landlordMatch.confidence,
+                                })
+                                .where(eq(transactions.id, inserted.id));
+                        }
                     }
                 }
             } catch (error) {

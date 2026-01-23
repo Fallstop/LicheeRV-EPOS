@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar, CreditCard, CheckCircle, Copy, Check, ArrowDown } from "lucide-react";
 import { format, nextThursday, addWeeks, differenceInWeeks, isBefore, startOfDay, isAfter, addDays } from "date-fns";
+import { formatMoney } from "@/lib/utils";
 
 interface PaymentTransaction {
     id: string;
@@ -115,9 +116,9 @@ export function AutopaymentHelper({
                     startDate: currentStart,
                     endDate: catchupEndDate,
                     weeksCount: correctionWeeks,
-                    description: isBehind 
-                        ? `Catchup payment (+$${Math.abs(weeklyAdjustment).toFixed(2)}/week extra)`
-                        : `Reduced payment (using $${Math.abs(weeklyAdjustment).toFixed(2)}/week credit)`,
+                    description: isBehind
+                        ? `Catchup payment (+$${formatMoney(weeklyAdjustment)}/week extra)`
+                        : `Reduced payment (using $${formatMoney(weeklyAdjustment)}/week credit)`,
                 });
                 
                 currentStart = addWeeks(currentStart, correctionWeeks);
@@ -217,7 +218,7 @@ export function AutopaymentHelper({
                 
                 let description = "";
                 if (segment.amount !== currentWeeklyRate) {
-                    description = `Weekly payment at $${segment.amount.toFixed(2)}/week`;
+                    description = `Weekly payment at $${formatMoney(segment.amount)}/week`;
                 } else if (isOngoing && !hasNextSchedule) {
                     description = "Standard weekly payment (ongoing)";
                 } else {
@@ -295,11 +296,11 @@ export function AutopaymentHelper({
                                 isOnTrack ? "text-emerald-400" : isAhead ? "text-cyan-400" : "text-amber-400"
                             }`}>
                                 Balance: <span className="font-mono font-bold">
-                                    {totalBalance >= 0 ? "+" : ""}${totalBalance.toFixed(2)}
+                                    {totalBalance >= 0 ? "+" : "-"}${formatMoney(totalBalance)}
                                 </span>
                             </p>
                             <p className="text-slate-400 text-sm mt-1">
-                                Weekly rate: <span className="font-mono">${currentWeeklyRate.toFixed(2)}</span>
+                                Weekly rate: <span className="font-mono">${formatMoney(currentWeeklyRate)}</span>
                                 {scheduleEndDate && (
                                     <> • Ends: {format(scheduleEndDate, "d MMM yyyy")}</>
                                 )}
@@ -367,15 +368,15 @@ export function AutopaymentHelper({
                                                 ? "text-rose-400"
                                                 : "text-emerald-400"
                                         }`}>
-                                            ${step.amount.toFixed(2)}
+                                            ${formatMoney(step.amount)}
                                             <span className="text-xs text-slate-500 font-normal ml-2">
                                                 {step.weeksCount === 1 ? "one-time" : "/week"}
                                             </span>
                                         </p>
                                     </div>
-                                    
+
                                     <button
-                                        onClick={() => copyToClipboard(step.amount.toFixed(2), step.stepNumber)}
+                                        onClick={() => copyToClipboard(formatMoney(step.amount), step.stepNumber)}
                                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs hover:bg-emerald-500/30 transition-colors btn-press whitespace-nowrap"
                                     >
                                         {copiedStep === step.stepNumber ? (

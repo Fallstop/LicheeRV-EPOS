@@ -7,21 +7,22 @@ import { Search, Filter, Download, ChevronDown, ChevronUp, X, RefreshCw, ArrowDo
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { startOfDay, isSaturday, previousSaturday } from "date-fns";
 import { TransactionDetailModal } from "./TransactionDetailModal";
-import { isRentPayment } from "@/lib/utils";
-import type { Transaction as TransactionType, User } from "@/lib/db/schema";
+import { isRentPayment, formatMoney } from "@/lib/utils";
+import type { Transaction as TransactionType, User, Landlord } from "@/lib/db/schema";
 import Image from "next/image";
 
 interface TransactionListProps {
-    transactions: (TransactionType & { matchedUserName?: string | null })[];
+    transactions: (TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null })[];
     flatmates: Pick<User, "id" | "name" | "email">[];
+    landlords?: Pick<Landlord, "id" | "name">[];
     analysisStartDate?: Date | null;
 }
 
 const TIMEZONE = "Pacific/Auckland";
 const ROW_HEIGHT = 72;
 
-type ListItem = 
-    | { type: "transaction"; tx: TransactionType & { matchedUserName?: string | null }; index: number }
+type ListItem =
+    | { type: "transaction"; tx: TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null }; index: number }
     | { type: "week-header"; weekStart: Date }
     | { type: "analysis-boundary"; date: Date };
 
@@ -58,18 +59,19 @@ function useIsDesktop() {
     return isDesktop;
 }
 
-export function TransactionList({ transactions, flatmates, analysisStartDate }: TransactionListProps) {
+export function TransactionList({ transactions, flatmates, landlords = [], analysisStartDate }: TransactionListProps) {
     const router = useRouter();
     const parentRef = useRef<HTMLDivElement>(null);
     const isDesktop = useIsDesktop();
-    const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null }) | null>(null);
-    
+    const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null }) | null>(null);
+
     // Filters
     const [showFilters, setShowFilters] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
     const [selectedFlatmate, setSelectedFlatmate] = useState<string>("all");
+    const [selectedLandlord, setSelectedLandlord] = useState<string>("all");
     const [amountMin, setAmountMin] = useState("");
     const [amountMax, setAmountMax] = useState("");
     const [amountType, setAmountType] = useState<"all" | "in" | "out">("all");
@@ -79,10 +81,28 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
         return transactions.filter((tx) => {
             if (searchQuery) {
                 const query = searchQuery.toLowerCase();
-                const matchesSearch = 
+
+                // Parse raw data to search meta fields
+                let rawData: { meta?: { particulars?: string; code?: string; reference?: string; other_account?: string }; particulars?: string; code?: string; reference?: string; other_account?: string } = {};
+                try {
+                    rawData = JSON.parse(tx.rawData);
+                } catch {
+                    // Ignore parse errors
+                }
+                const meta = rawData.meta ?? {};
+                const particulars = rawData.particulars || meta.particulars || "";
+                const code = rawData.code || meta.code || "";
+                const reference = rawData.reference || meta.reference || "";
+                const otherAccount = rawData.other_account || meta.other_account || "";
+
+                const matchesSearch =
                     tx.description.toLowerCase().includes(query) ||
                     tx.merchant?.toLowerCase().includes(query) ||
-                    tx.category?.toLowerCase().includes(query);
+                    tx.category?.toLowerCase().includes(query) ||
+                    particulars.toLowerCase().includes(query) ||
+                    code.toLowerCase().includes(query) ||
+                    reference.toLowerCase().includes(query) ||
+                    otherAccount.toLowerCase().includes(query);
                 if (!matchesSearch) return false;
             }
 
@@ -104,6 +124,14 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                 }
             }
 
+            if (selectedLandlord !== "all") {
+                if (selectedLandlord === "landlord_any") {
+                    if (!tx.matchedLandlordId) return false;
+                } else {
+                    if (tx.matchedLandlordId !== selectedLandlord) return false;
+                }
+            }
+
             if (amountType === "in" && tx.amount <= 0) return false;
             if (amountType === "out" && tx.amount >= 0) return false;
 
@@ -113,7 +141,7 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
 
             return true;
         });
-    }, [transactions, searchQuery, dateFrom, dateTo, selectedFlatmate, amountMin, amountMax, amountType]);
+    }, [transactions, searchQuery, dateFrom, dateTo, selectedFlatmate, selectedLandlord, amountMin, amountMax, amountType]);
 
     // Build list items with week headers and analysis boundary inserted
     const listItems = useMemo((): ListItem[] => {
@@ -186,12 +214,13 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
         setDateFrom("");
         setDateTo("");
         setSelectedFlatmate("all");
+        setSelectedLandlord("all");
         setAmountMin("");
         setAmountMax("");
         setAmountType("all");
     }, []);
 
-    const hasActiveFilters = searchQuery || dateFrom || dateTo || selectedFlatmate !== "all" || amountMin || amountMax || amountType !== "all";
+    const hasActiveFilters = searchQuery || dateFrom || dateTo || selectedFlatmate !== "all" || selectedLandlord !== "all" || amountMin || amountMax || amountType !== "all";
 
     // Calculate stats for filtered transactions
     const stats = useMemo(() => {
@@ -210,7 +239,7 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                     </div>
                     <div>
                         <p className="text-sm text-slate-400">Money In</p>
-                        <p className="text-xl font-bold text-emerald-400">${stats.totalIn.toFixed(2)}</p>
+                        <p className="text-xl font-bold text-emerald-400">${formatMoney(stats.totalIn)}</p>
                     </div>
                 </div>
                 <div className="glass rounded-xl p-4 flex items-center gap-3">
@@ -219,7 +248,7 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                     </div>
                     <div>
                         <p className="text-sm text-slate-400">Money Out</p>
-                        <p className="text-xl font-bold text-rose-400">${stats.totalOut.toFixed(2)}</p>
+                        <p className="text-xl font-bold text-rose-400">${formatMoney(stats.totalOut)}</p>
                     </div>
                 </div>
                 <div className="glass rounded-xl p-4 flex items-center gap-3">
@@ -316,6 +345,26 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Landlord Filter */}
+                            {landlords.length > 0 && (
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">Landlord</label>
+                                    <select
+                                        value={selectedLandlord}
+                                        onChange={(e) => setSelectedLandlord(e.target.value)}
+                                        className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-sm focus:border-emerald-500 outline-none"
+                                    >
+                                        <option value="all">All</option>
+                                        <option value="landlord_any">Landlord payments only</option>
+                                        {landlords.map(l => (
+                                            <option key={l.id} value={l.id}>
+                                                {l.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             {/* Amount Type */}
                             <div>
@@ -522,14 +571,18 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                                                 <span className={`badge text-xs ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
                                                     {tx.matchedUserName || "Matched"}
                                                 </span>
+                                            ) : tx.matchedLandlordId ? (
+                                                <span className="badge text-xs badge-warning">
+                                                    {tx.matchedLandlordName || "Landlord"}
+                                                </span>
                                             ) : (
                                                 <span className="text-slate-600 text-xs">-</span>
                                             )}
                                         </div>
-                                        
+
                                         <div className={`text-right font-mono font-medium text-sm ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
                                             {tx.amount > 0 ? "+" : ""}
-                                            ${Math.abs(tx.amount).toFixed(2)}
+                                            ${formatMoney(tx.amount)}
                                         </div>
                                     </div>
                                 );
@@ -582,7 +635,7 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                                                 {formatInTimeZone(tx.date, TIMEZONE, "d MMM · h:mm a")}
                                             </span>
                                             <span className={`font-mono font-semibold ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
-                                                {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
+                                                {tx.amount > 0 ? "+" : ""}${formatMoney(tx.amount)}
                                             </span>
                                         </div>
                                         
@@ -599,6 +652,11 @@ export function TransactionList({ transactions, flatmates, analysisStartDate }: 
                                             {tx.matchedUserId && (
                                                 <span className={`badge text-xs shrink-0 ${isRentPayment(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
                                                     {tx.matchedUserName || "Matched"}
+                                                </span>
+                                            )}
+                                            {tx.matchedLandlordId && (
+                                                <span className="badge text-xs shrink-0 badge-warning">
+                                                    {tx.matchedLandlordName || "Landlord"}
                                                 </span>
                                             )}
                                         </div>

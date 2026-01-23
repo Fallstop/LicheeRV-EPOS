@@ -76,7 +76,8 @@ export const transactions = sqliteTable("transactions", {
     rawData: text("raw_data").notNull(), // Full JSON from Akahu
     // Matching fields
     matchedUserId: text("matched_user_id").references(() => users.id),
-    matchType: text("match_type", { enum: ["rent_payment", "grocery_reimbursement", "other", "expense"] }),
+    matchedLandlordId: text("matched_landlord_id"), // References landlords.id (for outgoing rent payments)
+    matchType: text("match_type", { enum: ["rent_payment", "grocery_reimbursement", "other", "expense", "landlord_payment"] }),
     matchConfidence: real("match_confidence"), // 0-1 confidence score
     // Manual override flag - when true, sync won't overwrite the match
     manualMatch: integer("manual_match", { mode: "boolean" }).default(false),
@@ -95,6 +96,16 @@ export const paymentSchedules = sqliteTable("payment_schedules", {
     updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
+// Landlords - for tracking rent payments going OUT to landlords
+export const landlords = sqliteTable("landlords", {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    name: text("name").notNull(),
+    bankAccountPattern: text("bank_account_pattern"), // Bank account to match
+    matchingName: text("matching_name"), // Name pattern to match in descriptions
+    createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
 // System state for tracking sync status
 export const systemState = sqliteTable("system_state", {
     key: text("key").primaryKey(),
@@ -109,3 +120,5 @@ export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
 export type NewPaymentSchedule = typeof paymentSchedules.$inferInsert;
+export type Landlord = typeof landlords.$inferSelect;
+export type NewLandlord = typeof landlords.$inferInsert;

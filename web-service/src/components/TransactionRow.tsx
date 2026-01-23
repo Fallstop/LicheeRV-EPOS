@@ -3,6 +3,7 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { CreditCard } from "lucide-react";
 import Image from "next/image";
+import { formatMoney } from "@/lib/utils";
 
 const TIMEZONE = "Pacific/Auckland";
 
@@ -17,6 +18,8 @@ export interface TransactionRowData {
     category?: string | null;
     matchedUserId?: string | null;
     matchedUserName?: string | null;
+    matchedLandlordId?: string | null;
+    matchedLandlordName?: string | null;
     matchType?: string | null;
     isRentPayment?: boolean;
     isThisUser?: boolean;
@@ -96,13 +99,17 @@ export function TransactionRow({
                         <span className={`badge ${isRentPaymentType(tx.matchType) ? "badge-success" : "badge-neutral"}`}>
                             {tx.matchedUserName || "Matched"}
                         </span>
+                    ) : tx.matchedLandlordId ? (
+                        <span className="badge badge-warning">
+                            {tx.matchedLandlordName || "Landlord"}
+                        </span>
                     ) : (
                         <span className="text-slate-600 text-xs">-</span>
                     )}
                 </td>
             )}
             <td className={`text-right font-mono font-medium ${tx.amount > 0 ? "amount-positive" : "amount-negative"}`}>
-                {tx.amount > 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
+                {tx.amount > 0 ? "+" : "-"}${formatMoney(tx.amount)}
             </td>
         </tr>
     );

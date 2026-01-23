@@ -3,6 +3,7 @@
 import { X, Calendar, DollarSign, User, FileText } from "lucide-react";
 import { PaymentSchedule } from "@/lib/db/schema";
 import { format } from "date-fns";
+import { formatMoney } from "@/lib/utils";
 
 interface ViewScheduleDialogProps {
     schedule: PaymentSchedule;
@@ -47,7 +48,7 @@ export function ViewScheduleDialog({ schedule, flatmates, onClose }: ViewSchedul
                         </div>
                         <div>
                             <p className="text-xs text-slate-400">Weekly Amount</p>
-                            <p className="font-medium text-emerald-400">${schedule.weeklyAmount.toFixed(2)}/week</p>
+                            <p className="font-medium text-emerald-400">${formatMoney(schedule.weeklyAmount)}/week</p>
                         </div>
                     </div>
 

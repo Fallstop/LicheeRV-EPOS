@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { transactions, paymentSchedules, users, systemState } from "./db/schema";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { transactions, paymentSchedules, users, systemState, landlords } from "./db/schema";
+import { eq, and, gte, lte, sql, isNotNull } from "drizzle-orm";
 import {
     eachWeekOfInterval,
     startOfWeek,
@@ -511,4 +511,71 @@ export async function getCurrentWeekSummary(): Promise<
     );
 
     return summary;
+}
+
+/**
+ * Get summary of all payments made to landlords.
+ */
+export interface LandlordPaymentSummary {
+    totalPaid: number;
+    byLandlord: Array<{
+        landlordId: string;
+        landlordName: string;
+        totalPaid: number;
+        transactionCount: number;
+    }>;
+}
+
+export async function getLandlordPaymentSummary(): Promise<LandlordPaymentSummary> {
+    // Get configured analysis start date
+    const analysisStartDate = await getAnalysisStartDate();
+
+    // Get all landlord payments (transactions with matchedLandlordId)
+    const landlordPayments = await db
+        .select({
+            landlordId: transactions.matchedLandlordId,
+            landlordName: landlords.name,
+            amount: transactions.amount,
+        })
+        .from(transactions)
+        .innerJoin(landlords, eq(transactions.matchedLandlordId, landlords.id))
+        .where(
+            and(
+                isNotNull(transactions.matchedLandlordId),
+                eq(transactions.matchType, "landlord_payment"),
+                analysisStartDate ? gte(transactions.date, analysisStartDate) : undefined
+            )
+        );
+
+    // Group by landlord
+    const byLandlordMap = new Map<string, { landlordName: string; totalPaid: number; transactionCount: number }>();
+    let totalPaid = 0;
+
+    for (const payment of landlordPayments) {
+        if (!payment.landlordId) continue;
+
+        // Amount is negative for outgoing payments, so we take absolute value
+        const absAmount = Math.abs(payment.amount);
+        totalPaid += absAmount;
+
+        const existing = byLandlordMap.get(payment.landlordId);
+        if (existing) {
+            existing.totalPaid += absAmount;
+            existing.transactionCount += 1;
+        } else {
+            byLandlordMap.set(payment.landlordId, {
+                landlordName: payment.landlordName,
+                totalPaid: absAmount,
+                transactionCount: 1,
+            });
+        }
+    }
+
+    return {
+        totalPaid,
+        byLandlord: Array.from(byLandlordMap.entries()).map(([landlordId, data]) => ({
+            landlordId,
+            ...data,
+        })),
+    };
 }

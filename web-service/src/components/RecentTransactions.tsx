@@ -8,7 +8,7 @@ import { TransactionRow, type TransactionRowData } from "./TransactionRow";
 import type { Transaction as TransactionType, User } from "@/lib/db/schema";
 
 interface RecentTransactionsProps {
-    transactions: (TransactionType & { matchedUserName?: string | null })[];
+    transactions: (TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null })[];
     emptyMessage?: string;
     emptySubMessage?: string;
     flatmates?: Pick<User, "id" | "name" | "email">[];
@@ -21,7 +21,7 @@ export function RecentTransactions({
     flatmates = []
 }: RecentTransactionsProps) {
     const router = useRouter();
-    const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null }) | null>(null);
+    const [selectedTransaction, setSelectedTransaction] = useState<(TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null }) | null>(null);
 
     return (
         <>

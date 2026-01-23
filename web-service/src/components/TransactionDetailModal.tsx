@@ -7,17 +7,25 @@ import type { Transaction as TransactionType, User as UserType } from "@/lib/db/
 import { formatInTimeZone } from "date-fns-tz";
 import Image from "next/image";
 import { updateTransactionMatchAction } from "@/lib/actions";
+import { formatMoney } from "@/lib/utils";
 
 interface RawTransactionData {
     particulars?: string;
     code?: string;
     reference?: string;
     other_account?: string;
+    meta?: {
+        particulars?: string;
+        code?: string;
+        reference?: string;
+        other_account?: string;
+        card_suffix?: string;
+    };
     [key: string]: unknown;
 }
 
 interface TransactionDetailModalProps {
-    transaction: TransactionType & { matchedUserName?: string | null };
+    transaction: TransactionType & { matchedUserName?: string | null; matchedLandlordName?: string | null };
     onClose: () => void;
     flatmates?: Pick<UserType, "id" | "name" | "email">[];
     onUpdate?: () => void;
@@ -93,7 +101,7 @@ export function TransactionDetailModal({ transaction, onClose, flatmates = [], o
                                 Amount
                             </div>
                             <p className={`text-2xl font-bold ${transaction.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                                {transaction.amount > 0 ? "+" : ""}${Math.abs(transaction.amount).toFixed(2)}
+                                {transaction.amount > 0 ? "+" : "-"}${formatMoney(transaction.amount)}
                             </p>
                         </div>
                         <div className="glass rounded-xl p-4">
@@ -262,47 +270,73 @@ export function TransactionDetailModal({ transaction, onClose, flatmates = [], o
                                         </p>
                                     )}
                                 </div>
+                            ) : transaction.matchedLandlordId ? (
+                                <div>
+                                    <span className="badge badge-warning">
+                                        {transaction.matchedLandlordName || "Landlord"}
+                                    </span>
+                                    {transaction.matchType && (
+                                        <span className="badge badge-neutral ml-2">
+                                            {transaction.matchType.replace("_", " ")}
+                                        </span>
+                                    )}
+                                    {transaction.matchConfidence && (
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            {(transaction.matchConfidence * 100).toFixed(0)}% confidence
+                                        </p>
+                                    )}
+                                </div>
                             ) : (
                                 <span className="text-slate-500">Not matched</span>
                             )}
                         </div>
                     </div>
 
-                    {/* Bank Details from raw data */}
-                    {(rawData.particulars || rawData.code || rawData.reference || rawData.other_account) && (
-                        <div className="mb-6">
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-3">
-                                <Building2 className="w-4 h-4" />
-                                Bank Details
+                    {/* Bank Details from raw data (check both root and meta) */}
+                    {(() => {
+                        const meta = rawData.meta ?? {};
+                        const particulars = rawData.particulars || meta.particulars;
+                        const code = rawData.code || meta.code;
+                        const reference = rawData.reference || meta.reference;
+                        const otherAccount = rawData.other_account || meta.other_account;
+
+                        if (!particulars && !code && !reference && !otherAccount) return null;
+
+                        return (
+                            <div className="mb-6">
+                                <div className="flex items-center gap-2 text-slate-400 text-sm mb-3">
+                                    <Building2 className="w-4 h-4" />
+                                    Bank Details
+                                </div>
+                                <div className="glass rounded-xl p-4 space-y-2 text-sm">
+                                    {particulars && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400">Particulars</span>
+                                            <span className="font-mono">{String(particulars)}</span>
+                                        </div>
+                                    )}
+                                    {code && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400">Code</span>
+                                            <span className="font-mono">{String(code)}</span>
+                                        </div>
+                                    )}
+                                    {reference && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400">Reference</span>
+                                            <span className="font-mono">{String(reference)}</span>
+                                        </div>
+                                    )}
+                                    {otherAccount && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400">Other Account</span>
+                                            <span className="font-mono">{String(otherAccount)}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div className="glass rounded-xl p-4 space-y-2 text-sm">
-                                {rawData.particulars && (
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400">Particulars</span>
-                                        <span className="font-mono">{String(rawData.particulars)}</span>
-                                    </div>
-                                )}
-                                {rawData.code && (
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400">Code</span>
-                                        <span className="font-mono">{String(rawData.code)}</span>
-                                    </div>
-                                )}
-                                {rawData.reference && (
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400">Reference</span>
-                                        <span className="font-mono">{String(rawData.reference)}</span>
-                                    </div>
-                                )}
-                                {rawData.other_account && (
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400">Other Account</span>
-                                        <span className="font-mono">{String(rawData.other_account)}</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Raw JSON (collapsible) */}
                     <details className="group">

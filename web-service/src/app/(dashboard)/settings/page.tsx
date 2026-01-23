@@ -1,13 +1,14 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { users, systemState } from "@/lib/db/schema";
+import { users, systemState, landlords } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { User, Mail, Calendar, Shield, Settings2 } from "lucide-react";
+import { User, Mail, Calendar, Shield, Settings2, Building2 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import Image from "next/image";
 import { SettingsForm } from "./SettingsForm";
 import { AnalysisStartDateForm } from "./AnalysisStartDateForm";
+import { LandlordForm } from "./LandlordForm";
 
 export default async function SettingsPage() {
     const session = await auth();
@@ -29,8 +30,9 @@ export default async function SettingsPage() {
     const user = dbUser[0];
     const isAdmin = user.role === "admin";
 
-    // Get analysis start date if admin
+    // Get analysis start date and landlords if admin
     let analysisStartDate: string | null = null;
+    let allLandlords: typeof landlords.$inferSelect[] = [];
     if (isAdmin) {
         const setting = await db
             .select()
@@ -38,6 +40,8 @@ export default async function SettingsPage() {
             .where(eq(systemState.key, "analysis_start_date"))
             .limit(1);
         analysisStartDate = setting[0]?.value ?? null;
+
+        allLandlords = await db.select().from(landlords);
     }
 
     return (
@@ -152,18 +156,33 @@ export default async function SettingsPage() {
 
             {/* Admin Settings */}
             {isAdmin && (
-                <div className="glass rounded-2xl overflow-hidden">
-                    <div className="p-5 border-b border-slate-700/50">
-                        <h2 className="font-semibold text-lg flex items-center gap-2">
-                            <Settings2 className="w-5 h-5 text-amber-400" />
-                            Admin Settings
-                        </h2>
-                        <p className="text-sm text-slate-400 mt-1">
-                            System-wide configuration
-                        </p>
+                <>
+                    <div className="glass rounded-2xl overflow-hidden mt-6">
+                        <div className="p-5 border-b border-slate-700/50">
+                            <h2 className="font-semibold text-lg flex items-center gap-2">
+                                <Settings2 className="w-5 h-5 text-amber-400" />
+                                Admin Settings
+                            </h2>
+                            <p className="text-sm text-slate-400 mt-1">
+                                System-wide configuration
+                            </p>
+                        </div>
+                        <AnalysisStartDateForm initialValue={analysisStartDate} />
                     </div>
-                    <AnalysisStartDateForm initialValue={analysisStartDate} />
-                </div>
+
+                    <div className="glass rounded-2xl overflow-hidden mt-6">
+                        <div className="p-5 border-b border-slate-700/50">
+                            <h2 className="font-semibold text-lg flex items-center gap-2">
+                                <Building2 className="w-5 h-5 text-orange-400" />
+                                Landlord Management
+                            </h2>
+                            <p className="text-sm text-slate-400 mt-1">
+                                Configure landlords to track rent payments going out
+                            </p>
+                        </div>
+                        <LandlordForm landlords={allLandlords} />
+                    </div>
+                </>
             )}
         </div>
     );

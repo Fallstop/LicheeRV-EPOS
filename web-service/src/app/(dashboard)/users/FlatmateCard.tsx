@@ -7,6 +7,7 @@ import { updateFlatmateAction, deleteFlatmateAction } from "@/lib/actions";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { User as UserType } from "@/lib/db/schema";
+import { formatMoney } from "@/lib/utils";
 
 interface FlatmateCardProps {
     flatmate: UserType;
@@ -357,7 +358,7 @@ export function FlatmateCard({ flatmate, currentSchedule, paymentStats }: Flatma
                         <div className="flex items-center gap-2 text-slate-400">
                             <Calendar className="w-4 h-4" />
                             <span>
-                                {paymentStats.count} payments (${paymentStats.total.toFixed(2)})
+                                {paymentStats.count} payments (${formatMoney(paymentStats.total)})
                             </span>
                         </div>
                     )}
