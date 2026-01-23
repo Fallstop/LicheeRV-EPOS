@@ -7,7 +7,6 @@ import {
     endOfWeek,
     startOfDay,
     isAfter,
-    addDays,
 } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
@@ -60,6 +59,7 @@ export interface WeeklyObligation {
     amountDue: number;
     amountPaid: number;
     balance: number; // Positive = overpaid, Negative = underpaid
+    isInProgress?: boolean; // true if this is the current week (due date hasn't passed)
     paymentTransactions: Array<{
         id: string;
         date: Date;
@@ -231,9 +231,12 @@ async function calculateFlatmateBalance(
         const weekEnd = getWeekEndInTimezone(weekStartRaw);
         const dueDate = getDueThursday(weekStartRaw);
 
-        // Skip future weeks that haven't had their due date yet
+        // Check if this week is in progress (due date hasn't passed yet)
         const now = new Date();
-        if (isAfter(dueDate, now)) {
+        const isInProgress = isAfter(dueDate, now);
+
+        // Skip future weeks beyond the current one (week hasn't started yet)
+        if (isInProgress && isAfter(weekStart, now)) {
             continue;
         }
 
@@ -282,6 +285,7 @@ async function calculateFlatmateBalance(
             amountDue,
             amountPaid,
             balance,
+            isInProgress,
             paymentTransactions: allWeekTransactions.map((tx) => ({
                 id: tx.id,
                 date: tx.date,
@@ -447,7 +451,10 @@ export async function getCurrentWeekSummary(): Promise<
 > {
     const now = new Date();
     const weekStartRaw = startOfWeek(now, { weekStartsOn: 6 });
-    const dueDate = getDueThursday(weekStartRaw);
+
+    // Use timezone-aware week boundaries (Sat 00:00 to Fri 23:59:59)
+    const weekStart = getWeekStartInTimezone(weekStartRaw);
+    const weekEnd = getWeekEndInTimezone(weekStartRaw);
 
     // Get all users (including admin)
     const flatmates = await db
@@ -468,10 +475,7 @@ export async function getCurrentWeekSummary(): Promise<
 
             const amountDue = getWeeklyAmount(schedules, weekStartRaw);
 
-            // Get payments for this week (only rent_payment type)
-            const windowStart = addDays(dueDate, -7);
-            const windowEnd = addDays(dueDate, 3);
-
+            // Get payments within the Sat-Fri week boundaries (only rent_payment type)
             const payments = await db
                 .select()
                 .from(transactions)
@@ -479,8 +483,8 @@ export async function getCurrentWeekSummary(): Promise<
                     and(
                         eq(transactions.matchedUserId, f.id),
                         eq(transactions.matchType, "rent_payment"),
-                        gte(transactions.date, windowStart),
-                        lte(transactions.date, windowEnd),
+                        gte(transactions.date, weekStart),
+                        lte(transactions.date, weekEnd),
                         sql`${transactions.amount} > 0`
                     )
                 );

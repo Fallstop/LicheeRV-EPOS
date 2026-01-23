@@ -9,6 +9,8 @@ import {
     getPeriodDates,
     getWeeklyExpenseDataAllCategories,
     getWeeklyExpenseData,
+    getDailyExpenseDataAllCategories,
+    getDailyExpenseData,
 } from "@/lib/expense-calculations";
 import { ExpenseCategoryCard } from "@/components/expenses/ExpenseCategoryCard";
 import { ExpenseBurnRates } from "@/components/expenses/ExpenseBurnRates";
@@ -29,7 +31,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     const session = await auth();
     const isAdmin = session?.user?.role === "admin";
 
-    const period = (params.period as "week" | "month" | "year" | "all") || "year";
+    const period = (params.period as "month" | "year" | "all") || "year";
     const selectedCategorySlug = params.category;
 
     // Get period dates
@@ -65,12 +67,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     // Get burn rates for all categories
     const burnRates = await calculateAllCategoryBurnRates();
 
-    // Get expense transactions
+    // Get expense transactions (higher limit for longer views)
+    const transactionLimit = period === "month" ? 100 : period === "year" ? 500 : 1000;
     const expenseTransactions = selectedCategory
-        ? await getAllExpenseTransactions(100, startDate, endDate).then((txs) =>
+        ? await getAllExpenseTransactions(transactionLimit, startDate, endDate).then((txs) =>
             txs.filter((tx) => tx.category.id === selectedCategory.id)
         )
-        : await getAllExpenseTransactions(100, startDate, endDate);
+        : await getAllExpenseTransactions(transactionLimit, startDate, endDate);
 
     // Get rules for admin
     const rules = isAdmin
@@ -80,12 +83,20 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             .orderBy(desc(expenseMatchingRules.priority))
         : [];
 
-    // Get chart data - weekly for all categories, or weekly for selected category
-    const weeklyDataAllCategories = selectedCategory
+    // For month view, get daily data; for year/all, get weekly data
+    const isMonthView = period === "month";
+
+    // Get chart data - daily for month view, weekly for year/all
+    const chartDataAllCategories = selectedCategory
         ? undefined
-        : await getWeeklyExpenseDataAllCategories(startDate, endDate);
-    const weeklyData = selectedCategory
-        ? await getWeeklyExpenseData(selectedCategory.id, startDate, endDate)
+        : isMonthView
+            ? await getDailyExpenseDataAllCategories(startDate, endDate)
+            : await getWeeklyExpenseDataAllCategories(startDate, endDate);
+
+    const chartData = selectedCategory
+        ? isMonthView
+            ? await getDailyExpenseData(selectedCategory.id, startDate, endDate)
+            : await getWeeklyExpenseData(selectedCategory.id, startDate, endDate)
         : undefined;
 
     return (
@@ -112,7 +123,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                                 category={category}
                                 totalAmount={summary?.totalAmount ?? 0}
                                 transactionCount={summary?.transactionCount ?? 0}
-                                trend={summary?.trend}
                                 isSelected={isSelected}
                                 href={categoryHref}
                                 subtitle={
@@ -130,12 +140,14 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <div className="glass rounded-2xl p-5 mb-8 animate-fade-in-up">
                 <h2 className="font-semibold text-lg mb-4">
                     {selectedCategory
-                        ? `${selectedCategory.name} - Weekly Spending`
-                        : "Weekly Expenses"}
+                        ? `${selectedCategory.name} - ${isMonthView ? "Daily" : "Weekly"} Spending`
+                        : `${isMonthView ? "Daily" : "Weekly"} Expenses`}
                 </h2>
                 <ExpenseChart
-                    weeklyDataAllCategories={weeklyDataAllCategories}
-                    weeklyData={weeklyData}
+                    weeklyDataAllCategories={isMonthView ? undefined : chartDataAllCategories as any}
+                    weeklyData={isMonthView ? undefined : chartData as any}
+                    dailyDataAllCategories={isMonthView ? chartDataAllCategories as any : undefined}
+                    dailyData={isMonthView ? chartData as any : undefined}
                     selectedCategory={selectedCategory}
                 />
             </div>

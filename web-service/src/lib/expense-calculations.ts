@@ -2,7 +2,7 @@ import { db } from "./db";
 import { expenseCategories, expenseTransactions, transactions } from "./db/schema";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import type { ExpenseCategory, Transaction, ExpenseTransaction } from "./db/schema";
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, differenceInDays, subMonths } from "date-fns";
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, subDays, differenceInDays, subMonths } from "date-fns";
 
 export interface ExpenseCategorySummary {
     category: ExpenseCategory;
@@ -317,11 +317,14 @@ export async function getExpenseTransactionsForCategory(
 
     let results = await query;
 
-    // Filter by date
+    // Filter by date (convert to timestamps for reliable comparison)
     if (startDate || endDate) {
+        const startTime = startDate?.getTime();
+        const endTime = endDate?.getTime();
         results = results.filter(r => {
-            if (startDate && r.transaction.date < startDate) return false;
-            if (endDate && r.transaction.date > endDate) return false;
+            const txTime = new Date(r.transaction.date).getTime();
+            if (startTime && txTime < startTime) return false;
+            if (endTime && txTime > endTime) return false;
             return true;
         });
     }
@@ -360,11 +363,14 @@ export async function getAllExpenseTransactions(
 
     let results = await query;
 
-    // Filter by date
+    // Filter by date (convert to timestamps for reliable comparison)
     if (startDate || endDate) {
+        const startTime = startDate?.getTime();
+        const endTime = endDate?.getTime();
         results = results.filter(r => {
-            if (startDate && r.transaction.date < startDate) return false;
-            if (endDate && r.transaction.date > endDate) return false;
+            const txTime = new Date(r.transaction.date).getTime();
+            if (startTime && txTime < startTime) return false;
+            if (endTime && txTime > endTime) return false;
             return true;
         });
     }
@@ -430,15 +436,10 @@ export async function getMonthlyExpenseBreakdown(
 /**
  * Get period dates based on selection
  */
-export function getPeriodDates(period: "week" | "month" | "year" | "all"): { startDate?: Date; endDate?: Date } {
+export function getPeriodDates(period: "month" | "year" | "all"): { startDate?: Date; endDate?: Date } {
     const now = new Date();
 
     switch (period) {
-        case "week":
-            return {
-                startDate: startOfWeek(now, { weekStartsOn: 6 }), // Saturday
-                endDate: endOfWeek(now, { weekStartsOn: 6 }),
-            };
         case "month":
             return {
                 startDate: startOfMonth(now),
@@ -446,7 +447,7 @@ export function getPeriodDates(period: "week" | "month" | "year" | "all"): { sta
             };
         case "year":
             return {
-                startDate: subMonths(startOfMonth(now), 11),
+                startDate: startOfMonth(subMonths(now, 12)),
                 endDate: endOfMonth(now),
             };
         case "all":
@@ -495,7 +496,6 @@ export async function getWeeklyExpenseData(
     endDate?: Date
 ): Promise<WeeklyExpenseData[]> {
     const end = endDate || new Date();
-    const start = startDate || subMonths(end, 12);
 
     const expenseTxs = await db
         .select({
@@ -505,6 +505,11 @@ export async function getWeeklyExpenseData(
         .from(expenseTransactions)
         .innerJoin(transactions, eq(expenseTransactions.transactionId, transactions.id))
         .where(eq(expenseTransactions.categoryId, categoryId));
+
+    // For "all time", find the earliest transaction date
+    const start = startDate || (expenseTxs.length > 0
+        ? expenseTxs.reduce((min, tx) => tx.date < min ? tx.date : min, expenseTxs[0].date)
+        : subMonths(end, 12));
 
     // Filter by date range
     const filteredTxs = expenseTxs.filter(tx => tx.date >= start && tx.date <= end);
@@ -602,7 +607,6 @@ export async function getWeeklyExpenseDataAllCategories(
     endDate?: Date
 ): Promise<WeeklyExpenseDataAllCategories[]> {
     const end = endDate || new Date();
-    const start = startDate || subMonths(end, 12);
 
     const categories = await db
         .select()
@@ -619,6 +623,11 @@ export async function getWeeklyExpenseDataAllCategories(
         })
         .from(expenseTransactions)
         .innerJoin(transactions, eq(expenseTransactions.transactionId, transactions.id));
+
+    // For "all time", find the earliest transaction date
+    const start = startDate || (allExpenseTxs.length > 0
+        ? allExpenseTxs.reduce((min, tx) => tx.date < min ? tx.date : min, allExpenseTxs[0].date)
+        : subMonths(end, 12));
 
     // Filter by date range
     const filteredTxs = allExpenseTxs.filter(tx => tx.date >= start && tx.date <= end);
@@ -664,6 +673,156 @@ export async function getWeeklyExpenseDataAllCategories(
         });
 
         currentWeek.setDate(currentWeek.getDate() + 7);
+    }
+
+    return results;
+}
+
+export interface DailyExpenseData {
+    day: string;
+    dayDate: Date;
+    amount: number;
+}
+
+export interface DailyExpenseDataAllCategories {
+    day: string;
+    dayDate: Date;
+    categories: {
+        categoryId: string;
+        categoryName: string;
+        categoryColor: string;
+        amount: number;
+    }[];
+    total: number;
+}
+
+/**
+ * Get daily expense data for a single category (for bar chart)
+ * Fills in all days in the range, even those without expenses
+ */
+export async function getDailyExpenseData(
+    categoryId: string,
+    startDate?: Date,
+    endDate?: Date
+): Promise<DailyExpenseData[]> {
+    const end = endDate || new Date();
+    const start = startDate || subMonths(end, 1);
+
+    const expenseTxs = await db
+        .select({
+            amount: transactions.amount,
+            date: transactions.date,
+        })
+        .from(expenseTransactions)
+        .innerJoin(transactions, eq(expenseTransactions.transactionId, transactions.id))
+        .where(eq(expenseTransactions.categoryId, categoryId));
+
+    // Filter by date range
+    const filteredTxs = expenseTxs.filter(tx => tx.date >= start && tx.date <= end);
+
+    // Group by day
+    const dailyMap = new Map<string, number>();
+
+    filteredTxs.forEach(tx => {
+        const dayStart = startOfDay(tx.date);
+        const dayKey = dayStart.toISOString().split('T')[0];
+        const current = dailyMap.get(dayKey) || 0;
+        dailyMap.set(dayKey, current + Math.abs(tx.amount));
+    });
+
+    // Fill in all days in the range
+    const results: DailyExpenseData[] = [];
+    const currentDay = startOfDay(start);
+    const endNormalized = new Date(end);
+    endNormalized.setHours(23, 59, 59, 999);
+
+    while (currentDay <= endNormalized) {
+        const dayKey = currentDay.toISOString().split('T')[0];
+        const amount = dailyMap.get(dayKey) || 0;
+
+        results.push({
+            day: currentDay.toLocaleDateString("en-NZ", { day: "numeric", month: "short" }),
+            dayDate: new Date(currentDay),
+            amount,
+        });
+
+        currentDay.setDate(currentDay.getDate() + 1);
+    }
+
+    return results;
+}
+
+/**
+ * Get daily expense data for all categories (for stacked bar chart)
+ * Fills in all days in the range, even those without expenses
+ */
+export async function getDailyExpenseDataAllCategories(
+    startDate?: Date,
+    endDate?: Date
+): Promise<DailyExpenseDataAllCategories[]> {
+    const end = endDate || new Date();
+    const start = startDate || subMonths(end, 1);
+
+    const categories = await db
+        .select()
+        .from(expenseCategories)
+        .where(eq(expenseCategories.isActive, true))
+        .orderBy(expenseCategories.sortOrder);
+
+    // Get all expense transactions in the range
+    const allExpenseTxs = await db
+        .select({
+            categoryId: expenseTransactions.categoryId,
+            amount: transactions.amount,
+            date: transactions.date,
+        })
+        .from(expenseTransactions)
+        .innerJoin(transactions, eq(expenseTransactions.transactionId, transactions.id));
+
+    // Filter by date range
+    const filteredTxs = allExpenseTxs.filter(tx => tx.date >= start && tx.date <= end);
+
+    // Group by day and category
+    const dailyMap = new Map<string, Map<string, number>>();
+
+    filteredTxs.forEach(tx => {
+        const dayStart = startOfDay(tx.date);
+        const dayKey = dayStart.toISOString().split('T')[0];
+
+        if (!dailyMap.has(dayKey)) {
+            dailyMap.set(dayKey, new Map<string, number>());
+        }
+
+        const categoryMap = dailyMap.get(dayKey)!;
+        const current = categoryMap.get(tx.categoryId) || 0;
+        categoryMap.set(tx.categoryId, current + Math.abs(tx.amount));
+    });
+
+    // Fill in all days in the range
+    const results: DailyExpenseDataAllCategories[] = [];
+    const currentDay = startOfDay(start);
+    const endNormalized = new Date(end);
+    endNormalized.setHours(23, 59, 59, 999);
+
+    while (currentDay <= endNormalized) {
+        const dayKey = currentDay.toISOString().split('T')[0];
+        const categoryAmounts = dailyMap.get(dayKey) || new Map<string, number>();
+
+        const categoryData = categories.map(cat => ({
+            categoryId: cat.id,
+            categoryName: cat.name,
+            categoryColor: cat.color,
+            amount: categoryAmounts.get(cat.id) || 0,
+        }));
+
+        results.push({
+            day: currentDay.toLocaleDateString("en-NZ", { day: "numeric", month: "short" }),
+            dayDate: new Date(currentDay),
+            categories: categoryData,
+            total: categoryData.reduce((sum, c) => sum + c.amount, 0),
+        });
+
+        currentDay.setDate(currentDay.getDate() + 1);
     }
 
     return results;

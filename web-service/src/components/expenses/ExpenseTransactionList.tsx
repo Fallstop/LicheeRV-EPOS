@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Tag, Edit2 } from "lucide-react";
+import { Tag } from "lucide-react";
 import { formatInTimeZone } from "date-fns-tz";
 import type { ExpenseTransactionWithDetails } from "@/lib/expense-calculations";
-import type { ExpenseCategory } from "@/lib/db/schema";
-import { ManualMatchDialog } from "./ManualMatchDialog";
+import type { ExpenseCategory, Transaction } from "@/lib/db/schema";
+import { TransactionDetailModal } from "@/components/TransactionDetailModal";
 import { getExpenseIcon, getColorClasses } from "@/lib/expense-ui";
 
 const TIMEZONE = "Pacific/Auckland";
@@ -25,7 +25,7 @@ export function ExpenseTransactionList({
     showCategoryBadge = true,
 }: ExpenseTransactionListProps) {
     const router = useRouter();
-    const [selectedTx, setSelectedTx] = useState<ExpenseTransactionWithDetails | null>(null);
+    const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
     if (transactions.length === 0) {
         return (
@@ -46,8 +46,8 @@ export function ExpenseTransactionList({
                     return (
                         <div
                             key={transaction.id}
-                            className="px-4 py-3 hover:bg-slate-800/30 cursor-pointer flex items-center gap-3 group"
-                            onClick={() => setSelectedTx({ transaction, expenseTransaction, category })}
+                            className="px-4 py-3 hover:bg-slate-800/30 cursor-pointer flex items-center gap-3"
+                            onClick={() => setSelectedTransaction(transaction)}
                         >
                             {/* Category Icon */}
                             {showCategoryBadge && (
@@ -86,31 +86,18 @@ export function ExpenseTransactionList({
                                     -${Math.abs(transaction.amount).toFixed(2)}
                                 </span>
                             </div>
-
-                            {/* Edit Button (visible on hover) */}
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedTx({ transaction, expenseTransaction, category });
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-slate-700 transition-all"
-                            >
-                                <Edit2 className="w-4 h-4 text-slate-400" />
-                            </button>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Manual Match Dialog */}
-            {selectedTx && (
-                <ManualMatchDialog
-                    transaction={selectedTx.transaction}
-                    currentCategory={selectedTx.category}
-                    categories={categories}
-                    onClose={() => setSelectedTx(null)}
+            {/* Transaction Detail Modal */}
+            {selectedTransaction && (
+                <TransactionDetailModal
+                    transaction={selectedTransaction}
+                    onClose={() => setSelectedTransaction(null)}
                     onUpdate={() => {
-                        setSelectedTx(null);
+                        setSelectedTransaction(null);
                         router.refresh();
                     }}
                 />

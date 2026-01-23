@@ -4,14 +4,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Calendar, CalendarDays, CalendarRange } from "lucide-react";
 
 interface PeriodSelectorProps {
-    currentPeriod: "week" | "month" | "year" | "all";
+    currentPeriod: "month" | "year" | "all";
 }
 
 export function PeriodSelector({ currentPeriod }: PeriodSelectorProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    const setPeriod = (period: "week" | "month" | "year" | "all") => {
+    const setPeriod = (period: "month" | "year" | "all") => {
         const params = new URLSearchParams(searchParams.toString());
         if (period === "year") {
             params.delete("period");
@@ -22,9 +22,9 @@ export function PeriodSelector({ currentPeriod }: PeriodSelectorProps) {
     };
 
     const periods = [
-        { value: "week" as const, label: "Week", icon: Calendar },
-        { value: "month" as const, label: "Month", icon: CalendarDays },
-        { value: "year" as const, label: "Year", icon: CalendarRange },
+        { value: "month" as const, label: "Month", icon: Calendar },
+        { value: "year" as const, label: "Year", icon: CalendarDays },
+        { value: "all" as const, label: "All Time", icon: CalendarRange },
     ];
 
     return (
